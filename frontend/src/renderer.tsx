@@ -63,6 +63,7 @@ export const renderer = jsxRenderer(({ children }) => {
         {/* Core utility scripts - load order matters */}
         <script src="/static/validation.js"></script>
         <script src="/static/walletConnect.js"></script>
+        <script src="/static/contracts.js"></script>
         <script src="/static/notifications.js"></script>
         <script src="/static/dashboard.js"></script>
         <script src="/static/vault-wizard.js"></script>

@@ -753,7 +753,12 @@ async function deployVaultContract() {
     throw new Error('Ethers.js not available. Please refresh and try again.');
   }
 
-  showToast('📝 Please sign the transaction in MetaMask...', 'info');
+  // Check if contract utilities are available
+  if (typeof NetworkUtils === 'undefined' || typeof ContractUtils === 'undefined') {
+    throw new Error('Smart contract utilities not loaded. Please refresh and try again.');
+  }
+
+  showToast('🔍 Checking network...', 'info');
 
   // Get the provider from the connected wallet
   const provider = new ethers.providers.Web3Provider(window.ethereum);
@@ -765,34 +770,79 @@ async function deployVaultContract() {
     throw new Error('Wallet address mismatch. Please reconnect your wallet.');
   }
 
-  // Mock contract deployment - in production, this would deploy the actual VaultFactory contract
-  // For now, we'll create a transaction to demonstrate the flow
-  try {
-    showToast('🚀 Deploying your vault contract...', 'info');
+  // Check if user is on Sepolia testnet, if not switch
+  const isOnSepolia = await NetworkUtils.isOnSepolia();
+  if (!isOnSepolia) {
+    const currentNetwork = await NetworkUtils.getCurrentNetwork();
+    showToast(`⚠️ Currently on ${currentNetwork?.name || 'Unknown Network'}. Switching to Sepolia testnet...`, 'info');
     
-    // Create a simple transaction to demonstrate MetaMask interaction
-    // In production, this would be a contract deployment transaction
-    const tx = await signer.sendTransaction({
-      to: wizardState.connectedWallet.address, // Self-send for demo
-      value: ethers.utils.parseEther(wizardState.formData.depositAmount || '0'),
-      gasLimit: 21000
-    });
+    try {
+      await NetworkUtils.switchToSepolia();
+      showToast('✅ Switched to Sepolia testnet!', 'success');
+      
+      // Show faucet info if user might need testnet ETH
+      const balanceInfo = await FaucetUtils.checkBalance(signerAddress, provider);
+      if (!balanceInfo.hasMinimumBalance) {
+        showToast(`💰 Current balance: ${balanceInfo.formatted}. You might need testnet ETH for transactions.`, 'warning');
+        FaucetUtils.showFaucetInfo();
+      }
+    } catch (switchError) {
+      throw new Error('Please switch to Sepolia testnet to create vaults: ' + switchError.message);
+    }
+  }
 
-    showToast('⏳ Transaction submitted. Waiting for confirmation...', 'info');
+  try {
+    showToast('🚀 Creating vault on Sepolia testnet...', 'info');
     
-    // Wait for transaction confirmation
-    const receipt = await tx.wait();
+    // Check if we have a deployed VaultFactory, if not deploy one
+    let factoryAddress = window.DEPLOYED_CONTRACTS?.sepolia?.VaultFactory;
     
-    showToast('✅ Transaction confirmed!', 'success');
+    if (!factoryAddress) {
+      showToast('📦 No VaultFactory found. Deploying new factory contract...', 'info');
+      
+      const deployment = await ContractUtils.deployVaultFactory(
+        signer,
+        signerAddress, // Owner of the factory
+        '0.001' // Platform fee: 0.001 ETH
+      );
+      
+      factoryAddress = deployment.address;
+      
+      // Store for future use
+      if (!window.DEPLOYED_CONTRACTS) window.DEPLOYED_CONTRACTS = { sepolia: {} };
+      if (!window.DEPLOYED_CONTRACTS.sepolia) window.DEPLOYED_CONTRACTS.sepolia = {};
+      window.DEPLOYED_CONTRACTS.sepolia.VaultFactory = factoryAddress;
+      
+      showToast(`✅ VaultFactory deployed at: ${factoryAddress}`, 'success');
+    }
     
-    // Create vault object with real transaction data
+    // Calculate unlock timestamp
+    const unlockDate = new Date(wizardState.formData.unlockDate + 'T' + wizardState.formData.unlockTime);
+    const unlockTimestamp = Math.floor(unlockDate.getTime() / 1000);
+    
+    // Prepare vault configuration
+    const vaultConfig = {
+      unlockTime: unlockTimestamp,
+      allowedTokens: [], // Empty array allows all tokens
+      guardians: wizardState.formData.guardians.filter(g => g.trim()),
+      guardianThreshold: wizardState.formData.guardianThreshold || 0
+    };
+    
+    showToast('📝 Please sign the vault creation transaction in MetaMask...', 'info');
+    
+    // Create vault using the factory
+    const vaultCreation = await ContractUtils.createVault(factoryAddress, signer, vaultConfig);
+    
+    showToast('✅ Vault created successfully!', 'success');
+    
+    // Create vault object with real smart contract data
     const newVault = {
-      id: receipt.transactionHash,
+      id: vaultCreation.transactionHash,
       name: wizardState.formData.vaultName || 'Unnamed Vault',
-      address: receipt.contractAddress || `0x${Math.random().toString(16).substring(2, 42)}`, // Mock contract address
+      address: vaultCreation.vaultAddress,
       status: 'locked',
-      balance: wizardState.formData.depositAmount || '0',
-      balanceUSD: (parseFloat(wizardState.formData.depositAmount || '0') * 2225).toLocaleString(),
+      balance: '0', // New vaults start with 0 balance
+      balanceUSD: '0',
       unlockDate: wizardState.formData.unlockDate + 'T' + wizardState.formData.unlockTime + ':00Z',
       timeRemaining: new Date(wizardState.formData.unlockDate + 'T' + wizardState.formData.unlockTime).getTime() - Date.now(),
       guardians: wizardState.formData.guardians.filter(g => g.trim()).map((address, index) => ({
@@ -800,16 +850,20 @@ async function deployVaultContract() {
         name: `Guardian ${index + 1}`
       })),
       guardianThreshold: wizardState.formData.guardianThreshold,
+      network: 'Sepolia Testnet',
+      factoryAddress: factoryAddress,
+      explorerUrl: `https://sepolia.etherscan.io/address/${vaultCreation.vaultAddress}`,
       transactions: [{
-        id: receipt.transactionHash,
-        type: 'vault_created',
-        amount: wizardState.formData.depositAmount || '0',
+        id: vaultCreation.transactionHash,
+        type: 'vault_creation',
+        amount: '0', // No initial deposit in contract creation
         timestamp: new Date().toISOString(),
         status: 'confirmed',
-        blockNumber: receipt.blockNumber
+        blockNumber: vaultCreation.blockNumber,
+        gasUsed: vaultCreation.gasUsed
       }],
-      deploymentTransaction: receipt.transactionHash,
-      deploymentBlock: receipt.blockNumber
+      deploymentTransaction: vaultCreation.transactionHash,
+      deploymentBlock: vaultCreation.blockNumber
     };
 
     // Add to dashboard state
@@ -875,14 +929,22 @@ function showVaultCreationSuccess(newVault) {
         <i class="fas fa-check text-2xl text-green-600"></i>
       </div>
       <h3 class="text-2xl font-bold text-gray-900 mb-4">Vault Created! 🎉</h3>
-      <p class="text-gray-600 mb-6">Your secure time-locked vault has been successfully created and deployed.</p>
+      <p class="text-gray-600 mb-6">Your secure time-locked vault has been successfully deployed to Sepolia testnet. You can now send ETH and tokens to this vault address.</p>
       <div class="bg-gray-50 rounded-lg p-4 mb-6">
-        <div class="text-sm text-gray-600 mb-1">Vault Address:</div>
-        <div class="font-mono text-sm">${newVault ? newVault.address : '0x742d35...Eb1b4870'}</div>
-        ${newVault && newVault.balance > 0 ? `
+        <div class="text-sm text-gray-600 mb-1">Vault Contract Address:</div>
+        <div class="font-mono text-xs break-all">${newVault ? newVault.address : '0x742d35...Eb1b4870'}</div>
+        ${newVault && newVault.network ? `
           <div class="mt-2">
-            <div class="text-sm text-gray-600 mb-1">Initial Deposit:</div>
-            <div class="font-semibold">${newVault.balance} ETH</div>
+            <div class="text-sm text-gray-600 mb-1">Network:</div>
+            <div class="text-sm font-semibold text-blue-600">${newVault.network}</div>
+          </div>
+        ` : ''}
+        ${newVault && newVault.explorerUrl ? `
+          <div class="mt-3">
+            <a href="${newVault.explorerUrl}" target="_blank" 
+               class="inline-flex items-center text-sm text-blue-600 hover:text-blue-800">
+              <i class="fas fa-external-link-alt mr-1"></i>View on Etherscan
+            </a>
           </div>
         ` : ''}
       </div>
