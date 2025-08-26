@@ -770,25 +770,44 @@ async function deployVaultContract() {
     throw new Error('Wallet address mismatch. Please reconnect your wallet.');
   }
 
-  // Check if user is on Sepolia testnet, if not switch
+  // Check current network first
+  const currentNetwork = await NetworkUtils.getCurrentNetwork();
+  showToast(`🔍 Current network: ${currentNetwork?.name || 'Unknown Network'}`, 'info');
+  
+  // Force network switch if not on Sepolia
   const isOnSepolia = await NetworkUtils.isOnSepolia();
   if (!isOnSepolia) {
-    const currentNetwork = await NetworkUtils.getCurrentNetwork();
-    showToast(`⚠️ Currently on ${currentNetwork?.name || 'Unknown Network'}. Switching to Sepolia testnet...`, 'info');
+    showToast(`❌ Wrong network detected: ${currentNetwork?.name}. You must switch to Sepolia testnet to create vaults.`, 'error');
     
     try {
+      showToast('🔄 Requesting network switch to Sepolia testnet...', 'info');
       await NetworkUtils.switchToSepolia();
-      showToast('✅ Switched to Sepolia testnet!', 'success');
+      
+      // Verify the switch worked
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for network switch
+      const newNetwork = await NetworkUtils.getCurrentNetwork();
+      const stillOnSepolia = await NetworkUtils.isOnSepolia();
+      
+      if (!stillOnSepolia) {
+        throw new Error(`Network switch failed. Still on ${newNetwork?.name}. Please manually switch to Sepolia testnet in MetaMask.`);
+      }
+      
+      showToast('✅ Successfully switched to Sepolia testnet!', 'success');
       
       // Show faucet info if user might need testnet ETH
-      const balanceInfo = await FaucetUtils.checkBalance(signerAddress, provider);
+      const updatedProvider = new ethers.providers.Web3Provider(window.ethereum);
+      const balanceInfo = await FaucetUtils.checkBalance(signerAddress, updatedProvider);
       if (!balanceInfo.hasMinimumBalance) {
         showToast(`💰 Current balance: ${balanceInfo.formatted}. You might need testnet ETH for transactions.`, 'warning');
         FaucetUtils.showFaucetInfo();
       }
+      
     } catch (switchError) {
-      throw new Error('Please switch to Sepolia testnet to create vaults: ' + switchError.message);
+      console.error('Network switch error:', switchError);
+      throw new Error(`❌ NETWORK ERROR: Cannot create vaults on ${currentNetwork?.name}. Please manually switch to Sepolia testnet in MetaMask and try again. Error: ${switchError.message}`);
     }
+  } else {
+    showToast('✅ Already on Sepolia testnet!', 'success');
   }
 
   try {

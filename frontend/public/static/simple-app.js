@@ -123,9 +123,18 @@ document.addEventListener('DOMContentLoaded', function() {
               <div id="wallet-status" class="hidden bg-trust-green-50 border border-trust-green-200 rounded-xl p-6">
                 <div class="flex items-center justify-center">
                   <i class="fas fa-check-circle text-trust-green-600 text-2xl mr-3"></i>
-                  <div>
+                  <div class="flex-1">
                     <div class="font-bold text-trust-green-900">Wallet Connected!</div>
                     <div class="text-sm text-trust-green-700" id="wallet-address">0x...</div>
+                    <div id="network-status" class="text-xs mt-1">
+                      <span class="text-gray-600">Network: </span>
+                      <span id="current-network" class="font-semibold">Checking...</span>
+                    </div>
+                  </div>
+                  <div class="ml-4">
+                    <button id="switch-network-btn" class="hidden text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded" onclick="switchToSepoliaNetwork()">
+                      Switch to Sepolia
+                    </button>
                   </div>
                 </div>
               </div>
@@ -389,8 +398,39 @@ window.walletState = {
 };
 
 // Navigation functions
-function showCreateVault() {
+async function showCreateVault() {
   console.log('Opening vault creation wizard...');
+  
+  // Check network before starting vault creation
+  if (typeof NetworkUtils !== 'undefined') {
+    try {
+      const currentNetwork = await NetworkUtils.getCurrentNetwork();
+      const isOnSepolia = await NetworkUtils.isOnSepolia();
+      
+      if (!isOnSepolia && currentNetwork) {
+        showToast(`⚠️ Wrong Network: ${currentNetwork.name}`, 'warning');
+        showToast('Vault creation requires Sepolia testnet. Please switch networks before proceeding.', 'info');
+        
+        // Ask user if they want to switch now
+        const confirmSwitch = confirm(`You're currently on ${currentNetwork.name}. Switch to Sepolia testnet now to create vaults?`);
+        if (confirmSwitch) {
+          try {
+            showToast('🔄 Switching to Sepolia testnet...', 'info');
+            await NetworkUtils.switchToSepolia();
+            showToast('✅ Switched to Sepolia testnet!', 'success');
+          } catch (error) {
+            showToast('❌ Failed to switch networks. Please switch manually in MetaMask.', 'error');
+            return; // Don't proceed with vault creation
+          }
+        } else {
+          showToast('ℹ️ Vault creation cancelled. Switch to Sepolia testnet when ready.', 'info');
+          return; // Don't proceed with vault creation
+        }
+      }
+    } catch (error) {
+      console.warn('Could not check network:', error);
+    }
+  }
   
   // Get current wallet state and pass it to wizard
   const walletInfo = window.walletState.getWalletInfo();
@@ -515,3 +555,67 @@ function checkExistingWalletConnection() {
   }
   return null;
 }
+
+// Network management functions
+async function updateNetworkStatus() {
+  if (typeof NetworkUtils === 'undefined') return;
+  
+  try {
+    const currentNetwork = await NetworkUtils.getCurrentNetwork();
+    const isOnSepolia = await NetworkUtils.isOnSepolia();
+    
+    const networkElement = document.getElementById('current-network');
+    const switchButton = document.getElementById('switch-network-btn');
+    
+    if (networkElement) {
+      if (currentNetwork) {
+        networkElement.textContent = currentNetwork.name;
+        
+        if (isOnSepolia) {
+          networkElement.className = 'font-semibold text-green-600';
+          if (switchButton) switchButton.classList.add('hidden');
+        } else {
+          networkElement.className = 'font-semibold text-orange-600';
+          if (switchButton) switchButton.classList.remove('hidden');
+        }
+      } else {
+        networkElement.textContent = 'Unknown';
+        networkElement.className = 'font-semibold text-gray-500';
+        if (switchButton) switchButton.classList.add('hidden');
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to update network status:', error);
+  }
+}
+
+async function switchToSepoliaNetwork() {
+  if (typeof NetworkUtils === 'undefined') {
+    showToast('❌ Network utilities not available', 'error');
+    return;
+  }
+  
+  try {
+    showToast('🔄 Switching to Sepolia testnet...', 'info');
+    await NetworkUtils.switchToSepolia();
+    showToast('✅ Switched to Sepolia testnet!', 'success');
+    await updateNetworkStatus();
+  } catch (error) {
+    console.error('Network switch error:', error);
+    showToast('❌ Failed to switch networks: ' + error.message, 'error');
+  }
+}
+
+// Initialize network status when page loads
+document.addEventListener('DOMContentLoaded', function() {
+  // Update network status after a short delay to ensure wallet is loaded
+  setTimeout(updateNetworkStatus, 2000);
+  
+  // Listen for network changes
+  if (window.ethereum) {
+    window.ethereum.on('chainChanged', (chainId) => {
+      console.log('Network changed:', chainId);
+      setTimeout(updateNetworkStatus, 500);
+    });
+  }
+});
