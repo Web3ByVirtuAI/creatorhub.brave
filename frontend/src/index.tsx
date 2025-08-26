@@ -128,6 +128,106 @@ app.post('/api/vaults/:vaultId/withdraw', async (c) => {
   })
 })
 
+// Add the missing /api/vaults endpoint (redirect to mock for now)
+app.get('/api/vaults', (c) => {
+  return c.json({
+    success: true,
+    vaults: [
+      {
+        id: '0x1234...5678',
+        name: 'Emergency Fund',
+        status: 'locked',
+        balance: '5.75',
+        symbol: 'ETH',
+        unlockDate: '2024-06-15T10:00:00Z',
+        timeRemaining: 2592000, // 30 days in seconds
+        guardians: [
+          { address: '0xabcd...efgh', name: 'Alice' },
+          { address: '0x1111...2222', name: 'Bob' }
+        ]
+      },
+      {
+        id: '0x9876...5432',
+        name: 'Savings Vault',
+        status: 'unlocked',
+        balance: '12.50',
+        symbol: 'ETH',
+        unlockDate: '2024-01-15T09:00:00Z',
+        timeRemaining: 0,
+        guardians: [
+          { address: '0x3333...4444', name: 'Charlie' },
+          { address: '0x5555...6666', name: 'Diana' }
+        ]
+      },
+      {
+        id: '0xaaaa...bbbb',
+        name: 'Investment Portfolio',
+        status: 'pending',
+        balance: '25.00',
+        symbol: 'ETH',
+        unlockDate: '2025-12-25T00:00:00Z',
+        timeRemaining: 31536000, // 365 days in seconds
+        guardians: [
+          { address: '0x7777...8888', name: 'Eve' },
+          { address: '0x9999...aaaa', name: 'Frank' },
+          { address: '0xbbbb...cccc', name: 'Grace' }
+        ]
+      }
+    ],
+    totalValue: '43.25',
+    totalVaults: 3,
+    lockedAmount: '30.75',
+    unlockedAmount: '12.50'
+  })
+})
+
+// Add the missing /api/transactions endpoint
+app.get('/api/transactions', (c) => {
+  return c.json({
+    success: true,
+    transactions: [
+      {
+        id: '0xabcdef123456789',
+        type: 'deposit',
+        vaultId: '0x1234...5678',
+        vaultName: 'Emergency Fund',
+        amount: '2.5',
+        symbol: 'ETH',
+        fromAddress: '0x742d35Cc6B2c4032946A2e7d4BA99BD55',
+        timestamp: '2024-03-15T14:30:00Z',
+        status: 'confirmed',
+        blockNumber: 12345678
+      },
+      {
+        id: '0x987654321fedcba',
+        type: 'withdrawal',
+        vaultId: '0x9876...5432',
+        vaultName: 'Savings Vault', 
+        amount: '5.0',
+        symbol: 'ETH',
+        toAddress: '0x742d35Cc6B2c4032946A2e7d4BA99BD55',
+        timestamp: '2024-03-10T09:15:00Z',
+        status: 'confirmed',
+        blockNumber: 12340000
+      },
+      {
+        id: '0xfedcba0987654321',
+        type: 'vault_created',
+        vaultId: '0xaaaa...bbbb',
+        vaultName: 'Investment Portfolio',
+        amount: '25.0',
+        symbol: 'ETH',
+        fromAddress: '0x742d35Cc6B2c4032946A2e7d4BA99BD55',
+        timestamp: '2024-02-28T16:45:00Z',
+        status: 'confirmed',
+        blockNumber: 12330000
+      }
+    ],
+    totalTransactions: 3,
+    pendingTransactions: 0
+  })
+})
+
 // Test endpoint for running frontend validation tests
 app.get('/test', (c) => {
   return c.html(`

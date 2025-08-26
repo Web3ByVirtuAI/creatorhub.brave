@@ -1,20 +1,22 @@
 // CreatorHub.Brave - Frontend Validation Tests
 // Test suite for form validation and utility functions
 
-// Mock ethers for testing
-global.ethers = {
-  utils: {
-    isAddress: (address) => {
-      return /^0x[a-fA-F0-9]{40}$/.test(address);
-    },
-    getAddress: (address) => {
-      if (global.ethers.utils.isAddress(address)) {
-        return address.toLowerCase(); // Simplified checksum
+// Mock ethers for testing (browser-compatible)
+if (typeof window !== 'undefined') {
+  window.ethers = window.ethers || {
+    utils: {
+      isAddress: (address) => {
+        return /^0x[a-fA-F0-9]{40}$/.test(address);
+      },
+      getAddress: (address) => {
+        if (window.ethers.utils.isAddress(address)) {
+          return address.toLowerCase(); // Simplified checksum
+        }
+        throw new Error('Invalid address');
       }
-      throw new Error('Invalid address');
     }
-  }
-};
+  };
+}
 
 // Test data
 const validAddress1 = '0x742d35Cc6634C0532925a3b8D55B4E52Eb1b4870';
