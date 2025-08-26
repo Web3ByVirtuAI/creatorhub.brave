@@ -5,6 +5,7 @@
 let wizardState = {
   currentStep: 1,
   isVisible: false,
+  connectedWallet: null,
   formData: {
     unlockDate: '',
     unlockTime: '12:00',
@@ -32,11 +33,21 @@ function openDashboardAndClose(button) {
 }
 
 // Show the vault creation wizard
-function showVaultWizard() {
+function showVaultWizard(connectedWallet = null) {
   console.log('🚀 Opening Vault Creation Wizard');
   
   wizardState.isVisible = true;
-  wizardState.currentStep = 1;
+  
+  // Check if wallet is already connected
+  if (connectedWallet && connectedWallet.address) {
+    console.log('✅ Using already connected wallet:', connectedWallet.address);
+    wizardState.connectedWallet = connectedWallet;
+    wizardState.currentStep = 2; // Skip wallet connection step
+  } else {
+    console.log('⚠️ No wallet connected, starting from wallet connection');
+    wizardState.connectedWallet = null;
+    wizardState.currentStep = 1;
+  }
   
   // Create wizard modal
   const wizardModal = document.createElement('div');
@@ -60,16 +71,31 @@ function createWizardHTML() {
     <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full mx-4 max-h-90vh overflow-y-auto">
       <!-- Wizard Header -->
       <div class="bg-brave-blue-900 text-white px-8 py-6 rounded-t-2xl">
-        <div class="flex items-center justify-between">
+        <div class="flex items-center justify-between mb-4">
           <h2 class="text-2xl font-bold">Create Your Secure Vault</h2>
           <button onclick="closeWizard()" class="text-white hover:text-gray-200 text-2xl">
             <i class="fas fa-times"></i>
           </button>
         </div>
         
-        <!-- Progress Steps -->
-        <div class="mt-6 flex justify-between">
-          ${createProgressSteps()}
+        ${wizardState.connectedWallet ? `
+          <div class="bg-brave-blue-800 rounded-lg px-4 py-3 mb-6">
+            <div class="flex items-center">
+              <div class="w-3 h-3 bg-trust-green-400 rounded-full mr-3"></div>
+              <div class="flex-1">
+                <div class="text-sm text-brave-blue-200">Connected Wallet:</div>
+                <div class="font-mono text-sm">${wizardState.connectedWallet.address}</div>
+              </div>
+              <div class="text-xs bg-trust-green-100 text-trust-green-800 px-2 py-1 rounded">
+                ${wizardState.connectedWallet.type}
+              </div>
+            </div>
+          </div>
+        ` : ''}
+        
+        <!-- Step Progress Indicators -->
+        <div class="flex justify-center mb-2">
+          ${createEnhancedProgressSteps()}
         </div>
       </div>
       
@@ -118,7 +144,57 @@ function createWizardHTML() {
   `;
 }
 
-// Create progress steps
+// Create enhanced progress steps for header
+function createEnhancedProgressSteps() {
+  const steps = [
+    { number: 1, title: 'Connect Wallet', icon: 'fas fa-wallet', shortTitle: 'Wallet' },
+    { number: 2, title: 'Set Unlock Date', icon: 'fas fa-clock', shortTitle: 'Date' },
+    { number: 3, title: 'Configure Deposit', icon: 'fas fa-coins', shortTitle: 'Deposit' },
+    { number: 4, title: 'Add Guardians', icon: 'fas fa-shield-alt', shortTitle: 'Guardians' },
+    { number: 5, title: 'Review & Create', icon: 'fas fa-check-circle', shortTitle: 'Review' }
+  ];
+  
+  return `
+    <div class="flex items-center space-x-4">
+      ${steps.map((step, index) => {
+        const isActive = wizardState.currentStep === step.number;
+        const isCompleted = wizardState.currentStep > step.number;
+        const canNavigate = step.number <= Math.max(wizardState.currentStep, wizardState.connectedWallet ? 2 : 1);
+        
+        return `
+          <div class="flex items-center">
+            <div class="flex flex-col items-center cursor-pointer transition-all hover:scale-105 ${
+              canNavigate ? 'hover:opacity-80' : ''
+            }" 
+                 onclick="${canNavigate ? `goToStep(${step.number})` : ''}"
+                 title="${step.title}">
+              <div class="w-8 h-8 rounded-full border-2 flex items-center justify-center mb-1 transition-all ${
+                isCompleted ? 'bg-trust-green-500 border-trust-green-500' : 
+                isActive ? 'bg-vault-gold-500 border-vault-gold-500' : 
+                'border-brave-blue-300 bg-brave-blue-800'
+              }">
+                ${isCompleted ? '<i class="fas fa-check text-white text-xs"></i>' : 
+                  isActive ? `<i class="${step.icon} text-white text-xs"></i>` : step.number}
+              </div>
+              <span class="text-xs font-medium text-center ${
+                isActive ? 'text-vault-gold-300' : 
+                isCompleted ? 'text-trust-green-300' : 
+                'text-brave-blue-300'
+              }">${step.shortTitle}</span>
+            </div>
+            ${index < steps.length - 1 ? `
+              <div class="w-8 h-0.5 mx-2 ${
+                wizardState.currentStep > step.number ? 'bg-trust-green-500' : 'bg-brave-blue-600'
+              }"></div>
+            ` : ''}
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+// Create progress steps (legacy for bottom navigation)
 function createProgressSteps() {
   const steps = [
     { number: 1, title: 'Connect Wallet', icon: 'fas fa-wallet' },
@@ -162,23 +238,44 @@ function getStepContent(step) {
           <h3 class="text-2xl font-bold text-gray-900 mb-4">Connect Your Wallet</h3>
           <p class="text-gray-600 mb-8">Connect your Web3 wallet to create your secure time-locked vault</p>
           
-          <div class="grid grid-cols-2 gap-4 max-w-md mx-auto">
-            <button onclick="connectWalletInWizard('metamask')" class="wallet-connect-btn">
-              <div class="text-3xl mb-2">🦊</div>
-              <div class="font-medium">MetaMask</div>
-            </button>
-            <button onclick="connectWalletInWizard('walletconnect')" class="wallet-connect-btn">
-              <div class="text-3xl mb-2">🔗</div>
-              <div class="font-medium">WalletConnect</div>
-            </button>
-          </div>
-          
-          <div id="wallet-connection-status" class="mt-6 hidden">
-            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-              <i class="fas fa-check-circle text-green-600 mr-2"></i>
-              <span class="font-medium text-green-900">Wallet Connected!</span>
+          ${wizardState.connectedWallet ? `
+            <div class="max-w-md mx-auto">
+              <div class="bg-trust-green-50 border border-trust-green-200 rounded-lg p-6">
+                <div class="flex items-center justify-center mb-4">
+                  <i class="fas fa-check-circle text-trust-green-600 text-3xl mr-3"></i>
+                  <div>
+                    <div class="font-bold text-trust-green-900">Wallet Connected!</div>
+                    <div class="text-sm text-trust-green-700 capitalize">Using ${wizardState.connectedWallet.type}</div>
+                  </div>
+                </div>
+                <div class="bg-white rounded-lg p-3">
+                  <div class="text-xs text-gray-600 mb-1">Address:</div>
+                  <div class="font-mono text-sm">${wizardState.connectedWallet.address}</div>
+                </div>
+                <button onclick="goToStep(2)" class="w-full mt-4 bg-trust-green-600 hover:bg-trust-green-700 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+                  Continue to Next Step <i class="fas fa-arrow-right ml-2"></i>
+                </button>
+              </div>
             </div>
-          </div>
+          ` : `
+            <div class="grid grid-cols-2 gap-4 max-w-md mx-auto">
+              <button onclick="connectWalletInWizard('metamask')" class="wallet-connect-btn">
+                <div class="text-3xl mb-2">🦊</div>
+                <div class="font-medium">MetaMask</div>
+              </button>
+              <button onclick="connectWalletInWizard('walletconnect')" class="wallet-connect-btn">
+                <div class="text-3xl mb-2">🔗</div>
+                <div class="font-medium">WalletConnect</div>
+              </button>
+            </div>
+            
+            <div id="wallet-connection-status" class="mt-6 hidden">
+              <div class="bg-trust-green-50 border border-trust-green-200 rounded-lg p-4">
+                <i class="fas fa-check-circle text-trust-green-600 mr-2"></i>
+                <span class="font-medium text-trust-green-900">Wallet Connected!</span>
+              </div>
+            </div>
+          `}
         </div>
       `;
     
@@ -452,7 +549,8 @@ function goToStep(stepNumber) {
   // Restore data for the new step
   restoreStepData();
   
-  if (stepNumber === 4) {
+  // Update review data when reaching step 5
+  if (stepNumber === 5) {
     updateReviewData();
   }
 }
@@ -490,6 +588,12 @@ function updateWizardContent() {
   const modal = document.getElementById('vault-wizard-modal');
   if (modal) {
     modal.innerHTML = createWizardHTML();
+    
+    // Restore step data and update review if needed
+    restoreStepData();
+    if (wizardState.currentStep === 5) {
+      updateReviewData();
+    }
   }
 }
 

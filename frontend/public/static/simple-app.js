@@ -320,6 +320,9 @@ async function connectWallet(walletType) {
         timestamp: Date.now()
       }));
       
+      // Update global wallet state
+      window.walletState.updateWalletState(address, provider, walletType);
+      
       return { success: true, address, provider };
     }
     
@@ -340,12 +343,61 @@ function updateHeaderWalletButton(address) {
   }
 }
 
+// Global wallet state management
+window.walletState = {
+  isConnected: false,
+  address: null,
+  provider: null,
+  type: null,
+  
+  // Get current wallet state
+  getWalletInfo() {
+    try {
+      const stored = localStorage.getItem('connectedWallet');
+      if (stored) {
+        const walletData = JSON.parse(stored);
+        // Check if connection is less than 24 hours old
+        if (Date.now() - walletData.timestamp < 24 * 60 * 60 * 1000) {
+          this.isConnected = true;
+          this.address = walletData.address;
+          this.type = walletData.type;
+          return walletData;
+        }
+      }
+    } catch (error) {
+      console.error('Failed to get wallet info:', error);
+    }
+    return null;
+  },
+  
+  // Update wallet state
+  updateWalletState(address, provider, type) {
+    this.isConnected = true;
+    this.address = address;
+    this.provider = provider;
+    this.type = type;
+  },
+  
+  // Clear wallet state
+  clearWalletState() {
+    this.isConnected = false;
+    this.address = null;
+    this.provider = null;
+    this.type = null;
+    localStorage.removeItem('connectedWallet');
+  }
+};
+
 // Navigation functions
 function showCreateVault() {
   console.log('Opening vault creation wizard...');
+  
+  // Get current wallet state and pass it to wizard
+  const walletInfo = window.walletState.getWalletInfo();
+  
   // Call the real vault wizard function from vault-wizard.js
   if (typeof showVaultWizard === 'function') {
-    showVaultWizard();
+    showVaultWizard(walletInfo);
   } else {
     showToast('Vault wizard is loading...', 'warning');
     console.error('showVaultWizard function not found - vault-wizard.js may not be loaded');
