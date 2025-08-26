@@ -883,11 +883,35 @@ async function deployVaultContract() {
     showToast('📝 Please sign the vault creation transaction in MetaMask...', 'info');
     
     // Create vault using the factory
-    const vaultCreation = await ContractUtils.createVault(factoryAddress, signer, vaultConfig);
+    let vaultCreation;
+    try {
+      vaultCreation = await ContractUtils.createVault(factoryAddress, signer, vaultConfig);
+      showToast('✅ Real vault contract created successfully!', 'success');
+    } catch (contractError) {
+      console.warn('Contract deployment failed, using demo transaction:', contractError);
+      showToast('⚠️ Contract deployment failed. Creating demo transaction...', 'warning');
+      
+      // Fallback to demo transaction for testing
+      const demoTx = await signer.sendTransaction({
+        to: signerAddress, // Self-send for demo
+        value: ethers.utils.parseEther('0.001'), // Small demo amount
+        gasLimit: 21000
+      });
+      
+      const demoReceipt = await demoTx.wait();
+      
+      vaultCreation = {
+        vaultAddress: `0x${Math.random().toString(16).substring(2, 42)}`, // Mock vault address
+        transactionHash: demoReceipt.transactionHash,
+        blockNumber: demoReceipt.blockNumber,
+        gasUsed: demoReceipt.gasUsed.toString(),
+        isDemo: true
+      };
+      
+      showToast('✅ Demo transaction completed (not real contract)', 'info');
+    }
     
-    showToast('✅ Vault created successfully!', 'success');
-    
-    // Create vault object with real smart contract data
+    // Create vault object with smart contract or demo data
     const newVault = {
       id: vaultCreation.transactionHash,
       name: wizardState.formData.vaultName || 'Unnamed Vault',
@@ -904,15 +928,19 @@ async function deployVaultContract() {
       guardianThreshold: wizardState.formData.guardianThreshold,
       network: 'Sepolia Testnet',
       factoryAddress: factoryAddress,
-      explorerUrl: `https://sepolia.etherscan.io/address/${vaultCreation.vaultAddress}`,
+      explorerUrl: vaultCreation.isDemo ? null : `https://sepolia.etherscan.io/address/${vaultCreation.vaultAddress}`,
+      transactionUrl: `https://sepolia.etherscan.io/tx/${vaultCreation.transactionHash}`,
+      isDemo: vaultCreation.isDemo || false,
       transactions: [{
         id: vaultCreation.transactionHash,
-        type: 'vault_creation',
-        amount: '0', // No initial deposit in contract creation
+        type: vaultCreation.isDemo ? 'demo_transaction' : 'vault_creation',
+        amount: vaultCreation.isDemo ? '0.001' : '0',
         timestamp: new Date().toISOString(),
         status: 'confirmed',
         blockNumber: vaultCreation.blockNumber,
-        gasUsed: vaultCreation.gasUsed
+        gasUsed: vaultCreation.gasUsed,
+        explorerUrl: `https://sepolia.etherscan.io/tx/${vaultCreation.transactionHash}`,
+        isDemo: vaultCreation.isDemo || false
       }],
       deploymentTransaction: vaultCreation.transactionHash,
       deploymentBlock: vaultCreation.blockNumber
@@ -980,25 +1008,42 @@ function showVaultCreationSuccess(newVault) {
       <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
         <i class="fas fa-check text-2xl text-green-600"></i>
       </div>
-      <h3 class="text-2xl font-bold text-gray-900 mb-4">Vault Created! 🎉</h3>
-      <p class="text-gray-600 mb-6">Your secure time-locked vault has been successfully deployed to Sepolia testnet. You can now send ETH and tokens to this vault address.</p>
+      <h3 class="text-2xl font-bold text-gray-900 mb-4">${newVault?.isDemo ? 'Demo Transaction Created! ⚠️' : 'Vault Created! 🎉'}</h3>
+      <p class="text-gray-600 mb-6">
+        ${newVault?.isDemo 
+          ? 'A demo transaction was created on Sepolia testnet using ETH. Real contract deployment is still in development.' 
+          : 'Your secure time-locked vault has been successfully deployed to Sepolia testnet. You can now send ETH and tokens to this vault address.'
+        }
+      </p>
       <div class="bg-gray-50 rounded-lg p-4 mb-6">
-        <div class="text-sm text-gray-600 mb-1">Vault Contract Address:</div>
-        <div class="font-mono text-xs break-all">${newVault ? newVault.address : '0x742d35...Eb1b4870'}</div>
+        ${newVault?.isDemo ? `
+          <div class="text-sm text-orange-600 mb-2 font-semibold">⚠️ Demo Transaction</div>
+          <div class="text-sm text-gray-600 mb-1">Transaction Hash:</div>
+          <div class="font-mono text-xs break-all">${newVault.transactions[0]?.id || 'Unknown'}</div>
+        ` : `
+          <div class="text-sm text-gray-600 mb-1">Vault Contract Address:</div>
+          <div class="font-mono text-xs break-all">${newVault ? newVault.address : '0x742d35...Eb1b4870'}</div>
+        `}
         ${newVault && newVault.network ? `
           <div class="mt-2">
             <div class="text-sm text-gray-600 mb-1">Network:</div>
             <div class="text-sm font-semibold text-blue-600">${newVault.network}</div>
           </div>
         ` : ''}
-        ${newVault && newVault.explorerUrl ? `
-          <div class="mt-3">
+        <div class="mt-3 space-y-2">
+          ${newVault?.explorerUrl ? `
             <a href="${newVault.explorerUrl}" target="_blank" 
-               class="inline-flex items-center text-sm text-blue-600 hover:text-blue-800">
-              <i class="fas fa-external-link-alt mr-1"></i>View on Etherscan
+               class="block text-sm text-blue-600 hover:text-blue-800">
+              <i class="fas fa-external-link-alt mr-1"></i>View Vault Contract
             </a>
-          </div>
-        ` : ''}
+          ` : ''}
+          ${newVault?.transactionUrl ? `
+            <a href="${newVault.transactionUrl}" target="_blank" 
+               class="block text-sm text-green-600 hover:text-green-800">
+              <i class="fas fa-receipt mr-1"></i>View Transaction on Etherscan
+            </a>
+          ` : ''}
+        </div>
       </div>
       <div class="space-y-3">
         <button onclick="openDashboardAndClose(this)" 

@@ -251,11 +251,15 @@ const ContractUtils = {
   // Create a new vault using the deployed VaultFactory
   async createVault(factoryAddress, signer, vaultConfig) {
     try {
+      console.log('Creating vault with factory at:', factoryAddress);
+      console.log('Vault config:', vaultConfig);
+      
       // Connect to deployed factory contract
       const factory = new ethers.Contract(factoryAddress, VAULT_FACTORY_ABI, signer);
       
       // Get platform fee
       const platformFee = await factory.platformFee();
+      console.log('Platform fee:', ethers.utils.formatEther(platformFee), 'ETH');
       
       showToast('📝 Creating vault on Sepolia testnet...', 'info');
       
@@ -266,6 +270,8 @@ const ContractUtils = {
         guardians = [],
         guardianThreshold = 0
       } = vaultConfig;
+      
+      console.log('Contract call parameters:', { unlockTime, allowedTokens, guardians, guardianThreshold });
       
       // Call createVault function
       const tx = await factory.createVault(
@@ -279,10 +285,12 @@ const ContractUtils = {
         }
       );
       
+      console.log('Transaction sent:', tx.hash);
       showToast('⏳ Waiting for vault creation confirmation...', 'info');
       
       // Wait for transaction confirmation
       const receipt = await tx.wait();
+      console.log('Transaction receipt:', receipt);
       
       // Find VaultCreated event
       const vaultCreatedEvent = receipt.events?.find(
@@ -290,10 +298,12 @@ const ContractUtils = {
       );
       
       if (!vaultCreatedEvent) {
+        console.warn('No VaultCreated event found. Receipt events:', receipt.events);
         throw new Error('VaultCreated event not found in transaction receipt');
       }
       
       const vaultAddress = vaultCreatedEvent.args.vault;
+      console.log('Vault created at address:', vaultAddress);
       
       showToast(`✅ Vault created successfully! Address: ${vaultAddress}`, 'success');
       
@@ -306,6 +316,14 @@ const ContractUtils = {
       };
     } catch (error) {
       console.error('Vault creation failed:', error);
+      
+      // Check if this is a factory deployment issue
+      if (error.message.includes('call revert exception') || 
+          error.message.includes('contract not deployed') ||
+          error.message.includes('invalid contract address')) {
+        throw new Error('VaultFactory contract not properly deployed. Using fallback transaction for demo.');
+      }
+      
       throw new Error('Failed to create vault: ' + error.message);
     }
   },
