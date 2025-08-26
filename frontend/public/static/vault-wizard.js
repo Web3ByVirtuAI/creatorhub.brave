@@ -770,45 +770,78 @@ async function deployVaultContract() {
     throw new Error('Wallet address mismatch. Please reconnect your wallet.');
   }
 
-  // Check current network first
+  // STRICT NETWORK VALIDATION - NO BYPASS
   const currentNetwork = await NetworkUtils.getCurrentNetwork();
+  const isOnSepolia = await NetworkUtils.isOnSepolia();
+  
+  console.log('Network check:', { currentNetwork, isOnSepolia });
   showToast(`🔍 Current network: ${currentNetwork?.name || 'Unknown Network'}`, 'info');
   
-  // Force network switch if not on Sepolia
-  const isOnSepolia = await NetworkUtils.isOnSepolia();
+  // ABSOLUTE REQUIREMENT: Must be on Sepolia
   if (!isOnSepolia) {
-    showToast(`❌ Wrong network detected: ${currentNetwork?.name}. You must switch to Sepolia testnet to create vaults.`, 'error');
+    showToast(`🚫 BLOCKED: Cannot create vaults on ${currentNetwork?.name}`, 'error');
     
-    try {
-      showToast('🔄 Requesting network switch to Sepolia testnet...', 'info');
-      await NetworkUtils.switchToSepolia();
-      
-      // Verify the switch worked
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait for network switch
-      const newNetwork = await NetworkUtils.getCurrentNetwork();
-      const stillOnSepolia = await NetworkUtils.isOnSepolia();
-      
-      if (!stillOnSepolia) {
-        throw new Error(`Network switch failed. Still on ${newNetwork?.name}. Please manually switch to Sepolia testnet in MetaMask.`);
+    // Show a blocking modal instead of proceeding
+    const modal = document.createElement('div');
+    modal.className = 'fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-75';
+    modal.innerHTML = `
+      <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8 text-center">
+        <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+          <i class="fas fa-exclamation-triangle text-2xl text-red-600"></i>
+        </div>
+        <h3 class="text-2xl font-bold text-gray-900 mb-4">Wrong Network ⚠️</h3>
+        <p class="text-gray-600 mb-4">You're currently on <strong>${currentNetwork?.name || 'Unknown Network'}</strong>.</p>
+        <p class="text-gray-600 mb-6">Vault creation requires <strong>Sepolia Testnet</strong> to use ETH instead of ${currentNetwork?.symbol || 'other currencies'}.</p>
+        
+        <div class="space-y-3">
+          <button onclick="switchNetworkAndClose()" 
+                  class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg">
+            <i class="fas fa-network-wired mr-2"></i>Switch to Sepolia Testnet
+          </button>
+          <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                  class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-6 rounded-lg">
+            Cancel Vault Creation
+          </button>
+        </div>
+        
+        <div class="mt-4 text-xs text-gray-500">
+          <p>💡 Sepolia uses ETH for transactions, not AMB or other currencies</p>
+        </div>
+      </div>
+    `;
+    
+    // Add switch function to modal
+    window.switchNetworkAndClose = async function() {
+      try {
+        showToast('🔄 Switching to Sepolia testnet...', 'info');
+        await NetworkUtils.switchToSepolia();
+        
+        // Wait and verify
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        const newCheck = await NetworkUtils.isOnSepolia();
+        
+        if (newCheck) {
+          showToast('✅ Successfully switched to Sepolia! Please try creating vault again.', 'success');
+          modal.remove();
+          
+          // Close the vault wizard so user can restart
+          const wizardModal = document.querySelector('.fixed.inset-0.z-50');
+          if (wizardModal) wizardModal.remove();
+        } else {
+          showToast('❌ Network switch failed. Please switch manually in MetaMask.', 'error');
+        }
+      } catch (error) {
+        showToast('❌ Failed to switch: ' + error.message, 'error');
       }
-      
-      showToast('✅ Successfully switched to Sepolia testnet!', 'success');
-      
-      // Show faucet info if user might need testnet ETH
-      const updatedProvider = new ethers.providers.Web3Provider(window.ethereum);
-      const balanceInfo = await FaucetUtils.checkBalance(signerAddress, updatedProvider);
-      if (!balanceInfo.hasMinimumBalance) {
-        showToast(`💰 Current balance: ${balanceInfo.formatted}. You might need testnet ETH for transactions.`, 'warning');
-        FaucetUtils.showFaucetInfo();
-      }
-      
-    } catch (switchError) {
-      console.error('Network switch error:', switchError);
-      throw new Error(`❌ NETWORK ERROR: Cannot create vaults on ${currentNetwork?.name}. Please manually switch to Sepolia testnet in MetaMask and try again. Error: ${switchError.message}`);
-    }
-  } else {
-    showToast('✅ Already on Sepolia testnet!', 'success');
+    };
+    
+    document.body.appendChild(modal);
+    
+    // Stop execution completely
+    throw new Error(`BLOCKED: Cannot create vaults on ${currentNetwork?.name}. Switch to Sepolia testnet required.`);
   }
+  
+  showToast('✅ Network verified: Sepolia testnet', 'success');
 
   try {
     showToast('🚀 Creating vault on Sepolia testnet...', 'info');

@@ -28,7 +28,8 @@ const NetworkUtils = {
     
     try {
       const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-      return chainId === '0xaa36a7'; // Sepolia chain ID in hex
+      console.log('Current chain ID:', chainId); // Debug logging
+      return chainId === '0xaa36a7'; // Sepolia chain ID: 11155111 in hex
     } catch (error) {
       console.error('Failed to check network:', error);
       return false;

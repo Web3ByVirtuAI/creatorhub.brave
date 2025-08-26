@@ -42,11 +42,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 Your assets, your timeline, your security.
               </p>
               
+              <div id="network-warning" class="hidden bg-red-500 bg-opacity-20 border border-red-400 rounded-lg p-4 mb-6 text-white">
+                <div class="flex items-center">
+                  <i class="fas fa-exclamation-triangle mr-3 text-red-300"></i>
+                  <div>
+                    <div class="font-bold">Wrong Network Detected</div>
+                    <div class="text-sm opacity-90">Switch to Sepolia testnet to create vaults with ETH</div>
+                  </div>
+                </div>
+              </div>
+              
               <div class="flex flex-col sm:flex-row gap-6 justify-center items-center mb-12">
                 <a href="#create" onclick="showCreateVault()" 
                    class="bg-vault-gold-500 hover:bg-vault-gold-600 text-white px-8 py-4 rounded-xl font-bold text-lg transition-all transform hover:scale-105 shadow-lg">
                   <i class="fas fa-plus mr-2"></i>
                   Create Your First Vault
+                  <div class="text-xs opacity-80 mt-1">Requires Sepolia Testnet</div>
                 </a>
                 <a href="#dashboard" onclick="openDashboard()" 
                    class="bg-white bg-opacity-10 hover:bg-opacity-20 text-white px-8 py-4 rounded-xl font-semibold text-lg transition-all border border-white border-opacity-30">
@@ -401,38 +412,43 @@ window.walletState = {
 async function showCreateVault() {
   console.log('Opening vault creation wizard...');
   
-  // Check network before starting vault creation
+  // MANDATORY network check before ANY vault operations
   if (typeof NetworkUtils !== 'undefined') {
     try {
       const currentNetwork = await NetworkUtils.getCurrentNetwork();
       const isOnSepolia = await NetworkUtils.isOnSepolia();
       
-      if (!isOnSepolia && currentNetwork) {
-        showToast(`⚠️ Wrong Network: ${currentNetwork.name}`, 'warning');
-        showToast('Vault creation requires Sepolia testnet. Please switch networks before proceeding.', 'info');
+      console.log('Pre-creation network check:', { currentNetwork, isOnSepolia });
+      
+      if (!isOnSepolia) {
+        // Show blocking alert - no bypass allowed
+        alert(`🚫 NETWORK REQUIREMENT FAILED
+
+Current Network: ${currentNetwork?.name || 'Unknown'}
+Currency: ${currentNetwork?.symbol || 'Unknown'}
+
+REQUIRED: Sepolia Testnet (ETH)
+
+You MUST switch to Sepolia testnet before creating vaults. This prevents AMB/AirDAO transactions and ensures you use ETH.
+
+Please switch networks in MetaMask and try again.`);
         
-        // Ask user if they want to switch now
-        const confirmSwitch = confirm(`You're currently on ${currentNetwork.name}. Switch to Sepolia testnet now to create vaults?`);
-        if (confirmSwitch) {
-          try {
-            showToast('🔄 Switching to Sepolia testnet...', 'info');
-            await NetworkUtils.switchToSepolia();
-            showToast('✅ Switched to Sepolia testnet!', 'success');
-          } catch (error) {
-            showToast('❌ Failed to switch networks. Please switch manually in MetaMask.', 'error');
-            return; // Don't proceed with vault creation
-          }
-        } else {
-          showToast('ℹ️ Vault creation cancelled. Switch to Sepolia testnet when ready.', 'info');
-          return; // Don't proceed with vault creation
-        }
+        showToast(`❌ Blocked: Cannot create vaults on ${currentNetwork?.name}. Switch to Sepolia testnet required.`, 'error');
+        return; // Absolutely do not proceed
       }
+      
+      showToast('✅ Network verified: Sepolia testnet', 'success');
     } catch (error) {
-      console.warn('Could not check network:', error);
+      console.error('Network check failed:', error);
+      alert('❌ Cannot verify network. Please ensure MetaMask is connected and try again.');
+      return;
     }
+  } else {
+    alert('❌ Network utilities not available. Please refresh the page and try again.');
+    return;
   }
   
-  // Get current wallet state and pass it to wizard
+  // Only proceed if on Sepolia testnet
   const walletInfo = window.walletState.getWalletInfo();
   
   // Call the real vault wizard function from vault-wizard.js
@@ -566,6 +582,7 @@ async function updateNetworkStatus() {
     
     const networkElement = document.getElementById('current-network');
     const switchButton = document.getElementById('switch-network-btn');
+    const networkWarning = document.getElementById('network-warning');
     
     if (networkElement) {
       if (currentNetwork) {
@@ -574,14 +591,21 @@ async function updateNetworkStatus() {
         if (isOnSepolia) {
           networkElement.className = 'font-semibold text-green-600';
           if (switchButton) switchButton.classList.add('hidden');
+          if (networkWarning) networkWarning.classList.add('hidden');
         } else {
           networkElement.className = 'font-semibold text-orange-600';
           if (switchButton) switchButton.classList.remove('hidden');
+          if (networkWarning) {
+            networkWarning.classList.remove('hidden');
+            networkWarning.querySelector('.font-bold').textContent = `Wrong Network: ${currentNetwork.name}`;
+            networkWarning.querySelector('.opacity-90').textContent = `Currently using ${currentNetwork.symbol}. Switch to Sepolia testnet to use ETH.`;
+          }
         }
       } else {
         networkElement.textContent = 'Unknown';
         networkElement.className = 'font-semibold text-gray-500';
         if (switchButton) switchButton.classList.add('hidden');
+        if (networkWarning) networkWarning.classList.add('hidden');
       }
     }
   } catch (error) {
