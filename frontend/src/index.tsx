@@ -45,6 +45,89 @@ app.get('/api/health', (c) => {
   return c.json({ status: 'healthy', timestamp: new Date().toISOString() })
 })
 
+// Vault management API endpoints
+app.get('/api/vaults/mock', (c) => {
+  return c.json({
+    success: true,
+    vaults: [
+      {
+        id: '0x1234...5678',
+        name: 'Emergency Fund',
+        status: 'locked',
+        balance: '5.75',
+        symbol: 'ETH',
+        unlockDate: '2024-06-15T10:00:00Z',
+        timeRemaining: 2592000, // 30 days in seconds
+        guardians: [
+          { address: '0xabcd...efgh', name: 'Alice' },
+          { address: '0x1111...2222', name: 'Bob' }
+        ]
+      },
+      {
+        id: '0x9876...5432',
+        name: 'Savings Vault',
+        status: 'unlocked',
+        balance: '12.50',
+        symbol: 'ETH',
+        unlockDate: '2024-01-15T09:00:00Z',
+        timeRemaining: 0,
+        guardians: [
+          { address: '0x3333...4444', name: 'Charlie' },
+          { address: '0x5555...6666', name: 'Diana' }
+        ]
+      },
+      {
+        id: '0xaaaa...bbbb',
+        name: 'Investment Portfolio',
+        status: 'pending',
+        balance: '25.00',
+        symbol: 'ETH',
+        unlockDate: '2025-12-25T00:00:00Z',
+        timeRemaining: 31536000, // 365 days in seconds
+        guardians: [
+          { address: '0x7777...8888', name: 'Eve' },
+          { address: '0x9999...aaaa', name: 'Frank' },
+          { address: '0xbbbb...cccc', name: 'Grace' }
+        ]
+      }
+    ],
+    totalValue: '43.25',
+    totalVaults: 3,
+    lockedAmount: '30.75',
+    unlockedAmount: '12.50'
+  })
+})
+
+app.post('/api/vaults/:vaultId/deposit', async (c) => {
+  const vaultId = c.req.param('vaultId')
+  const { amount, fromAddress } = await c.req.json()
+  
+  // Simulate deposit transaction
+  return c.json({
+    success: true,
+    transactionHash: '0xabcdef...' + Math.random().toString(36).substring(7),
+    vaultId,
+    amount,
+    fromAddress,
+    timestamp: new Date().toISOString()
+  })
+})
+
+app.post('/api/vaults/:vaultId/withdraw', async (c) => {
+  const vaultId = c.req.param('vaultId')
+  const { amount, toAddress } = await c.req.json()
+  
+  // Simulate withdrawal transaction
+  return c.json({
+    success: true,
+    transactionHash: '0x123456...' + Math.random().toString(36).substring(7),
+    vaultId,
+    amount,
+    toAddress,
+    timestamp: new Date().toISOString()
+  })
+})
+
 // Test endpoint for running frontend validation tests
 app.get('/test', (c) => {
   return c.html(`
@@ -229,13 +312,34 @@ app.get('/', (c) => {
   return c.render(
     <div id="root">
       <div className="min-h-screen bg-slate-50">
-        <nav className="bg-brave-blue-900 text-white shadow-lg">
+        <nav className="bg-brave-blue-900 text-white shadow-lg sticky top-0 z-40">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
-              <div className="flex items-center">
-                <div className="text-xl font-bold">CreatorHub.Brave</div>
+              <div className="flex items-center space-x-8">
+                <a href="#home" className="text-xl font-bold hover:text-vault-gold-300 transition-colors">
+                  CreatorHub.Brave
+                </a>
+                <div className="hidden md:flex space-x-6">
+                  <a href="#home" className="text-sm font-medium hover:text-vault-gold-300 transition-colors">
+                    Home
+                  </a>
+                  <a href="#create" className="text-sm font-medium hover:text-vault-gold-300 transition-colors">
+                    Create Vault
+                  </a>
+                  <a href="#dashboard" className="text-sm font-medium hover:text-vault-gold-300 transition-colors">
+                    Dashboard
+                  </a>
+                </div>
               </div>
-              <div>
+              
+              <div className="flex items-center space-x-4">
+                {/* Network indicator */}
+                <div className="hidden sm:flex items-center text-sm text-brave-blue-200">
+                  <div className="w-2 h-2 bg-trust-green-400 rounded-full mr-2"></div>
+                  <span>Testnet</span>
+                </div>
+                
+                {/* Wallet connection will be replaced by enhanced version */}
                 <button 
                   id="connect-wallet-btn" 
                   className="bg-vault-gold-500 hover:bg-vault-gold-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
@@ -247,39 +351,13 @@ app.get('/', (c) => {
           </div>
         </nav>
         
-        <main className="container mx-auto px-4 py-8">
-          <div className="text-center mb-12">
-            <h1 className="text-4xl font-bold text-slate-900 mb-4">
-              Secure Your Tomorrow
-            </h1>
-            <p className="text-xl text-slate-600 max-w-2xl mx-auto">
-              Create time-locked vaults to secure your crypto assets until the perfect moment. 
-              Built on Ethereum Layer 2 with social recovery.
-            </p>
-          </div>
-          
-          <div id="vault-wizard-container" className="max-w-4xl mx-auto">
-            <div className="bg-white rounded-xl shadow-lg p-8">
-              <div className="text-center">
-                <div className="inline-flex items-center px-4 py-2 bg-brave-blue-50 text-brave-blue-900 rounded-full mb-6">
-                  <i className="fas fa-lock mr-2"></i>
-                  Vault Creation Wizard
-                </div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-4">Create Your Secure Vault</h2>
-                <p className="text-slate-600 mb-8">
-                  Follow these steps to create your time-locked cryptocurrency vault
-                </p>
-                
-                <div className="text-left">
-                  <div id="app">
-                    {/* React app will be mounted here */}
-                    <div className="text-center py-12">
-                      <div className="animate-spin w-8 h-8 border-4 border-brave-blue-200 border-t-brave-blue-600 rounded-full mx-auto mb-4"></div>
-                      <p className="text-slate-600">Loading Vault Wizard...</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
+        <main>
+          <div id="app">
+            {/* React app will be mounted here */}
+            <div className="text-center py-16">
+              <div className="animate-spin w-12 h-12 border-4 border-brave-blue-200 border-t-brave-blue-600 rounded-full mx-auto mb-6"></div>
+              <h2 className="text-2xl font-bold text-slate-900 mb-2">Loading CreatorHub.Brave</h2>
+              <p className="text-slate-600">Preparing your secure vault platform...</p>
             </div>
           </div>
         </main>
