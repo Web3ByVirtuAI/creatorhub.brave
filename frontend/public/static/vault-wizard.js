@@ -844,7 +844,34 @@ async function deployVaultContract() {
   showToast('✅ Network verified: Sepolia testnet', 'success');
 
   try {
-    showToast('🚀 Creating vault on Sepolia testnet...', 'info');
+    showToast('🚀 Creating vault using VaultFactory on Sepolia testnet...', 'info');
+    
+    // Check if we have a deployed VaultFactory, if not deploy one
+    let factoryAddress = window.DEPLOYED_CONTRACTS?.sepolia?.VaultFactory;
+    
+    if (!factoryAddress) {
+      showToast('🏭 No VaultFactory found. Deploying factory contract...', 'info');
+      
+      // Use the factory loader utilities
+      if (typeof FactoryContractUtils === 'undefined') {
+        throw new Error('Factory utilities not loaded. Please refresh the page.');
+      }
+      
+      const deployment = await FactoryContractUtils.deployVaultFactory(
+        signer,
+        signerAddress, // Owner of the factory
+        '0.001' // Platform fee: 0.001 ETH
+      );
+      
+      factoryAddress = deployment.address;
+      
+      // Store for future use
+      if (!window.DEPLOYED_CONTRACTS) window.DEPLOYED_CONTRACTS = { sepolia: {} };
+      if (!window.DEPLOYED_CONTRACTS.sepolia) window.DEPLOYED_CONTRACTS.sepolia = {};
+      window.DEPLOYED_CONTRACTS.sepolia.VaultFactory = factoryAddress;
+      
+      showToast(`✅ VaultFactory deployed at: ${factoryAddress}`, 'success');
+    }
     
     // Calculate unlock timestamp
     const unlockDate = new Date(wizardState.formData.unlockDate + 'T' + wizardState.formData.unlockTime);
@@ -858,11 +885,11 @@ async function deployVaultContract() {
       guardianThreshold: wizardState.formData.guardianThreshold || 0
     };
     
-    showToast('📝 Please sign the vault deployment transaction in MetaMask...', 'info');
+    showToast('📝 Please sign the vault creation transaction in MetaMask...', 'info');
     
-    // Create vault by direct deployment - NO DEMO FALLBACK
-    const vaultCreation = await ContractUtils.createVault(null, signer, vaultConfig);
-    showToast('✅ Vault contract deployed successfully!', 'success');
+    // Create vault using the factory - PROPER IMPLEMENTATION
+    const vaultCreation = await FactoryContractUtils.createVaultWithFactory(factoryAddress, signer, vaultConfig);
+    showToast('✅ Vault created through factory successfully!', 'success');
     
     // Create vault object with real smart contract data
     const newVault = {
@@ -880,6 +907,8 @@ async function deployVaultContract() {
       })),
       guardianThreshold: wizardState.formData.guardianThreshold,
       network: 'Sepolia Testnet',
+      factoryAddress: factoryAddress,
+      createdByFactory: vaultCreation.factoryUsed || false,
       explorerUrl: `https://sepolia.etherscan.io/address/${vaultCreation.vaultAddress}`,
       transactionUrl: `https://sepolia.etherscan.io/tx/${vaultCreation.transactionHash}`,
       transactions: [{
