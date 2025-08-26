@@ -1,0 +1,357 @@
+/* CreatorHub.Brave - Custom Styles */
+
+/* Import Inter font from Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+/* CSS Custom Properties for Brand Colors */
+:root {
+  /* Brand Colors */
+  --brave-blue-50: #eff6ff;
+  --brave-blue-500: #3b82f6;
+  --brave-blue-900: #1e3a8a;
+  --vault-gold-500: #f59e0b;
+  --vault-gold-600: #d97706;
+  --trust-green-600: #16a34a;
+  
+  /* Typography */
+  --font-brand: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', Monaco, Consolas, monospace;
+}
+
+/* Base Styles */
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-brand);
+  font-feature-settings: 'rlig' 1, 'calt' 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.font-brand {
+  font-family: var(--font-brand);
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Animations */
+.fade-in {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+.slide-up {
+  animation: slideUp 0.3s ease-out;
+}
+
+.pulse-gold {
+  animation: pulseGold 2s infinite;
+}
+
+@keyframes fadeIn {
+  from { 
+    opacity: 0; 
+    transform: translateY(10px); 
+  }
+  to { 
+    opacity: 1; 
+    transform: translateY(0); 
+  }
+}
+
+@keyframes slideUp {
+  from { 
+    transform: translateY(20px); 
+    opacity: 0; 
+  }
+  to { 
+    transform: translateY(0); 
+    opacity: 1; 
+  }
+}
+
+@keyframes pulseGold {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); 
+  }
+  50% { 
+    box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); 
+  }
+}
+
+/* Custom Components */
+.btn-primary {
+  @apply bg-vault-gold-500 hover:bg-vault-gold-600 text-white font-medium px-6 py-3 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg;
+}
+
+.btn-secondary {
+  @apply bg-brave-blue-900 hover:bg-brave-blue-800 text-white font-medium px-6 py-3 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg;
+}
+
+.card {
+  @apply bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden;
+}
+
+.input-field {
+  @apply w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-brave-blue-500 focus:border-transparent transition-all duration-200;
+}
+
+/* Wizard Steps */
+.wizard-step {
+  @apply relative;
+}
+
+.wizard-step::before {
+  content: '';
+  @apply absolute top-0 left-1/2 transform -translate-x-1/2 w-8 h-8 bg-slate-300 rounded-full flex items-center justify-center text-white font-medium;
+}
+
+.wizard-step.active::before {
+  @apply bg-brave-blue-900;
+}
+
+.wizard-step.completed::before {
+  @apply bg-trust-green-600;
+  content: '✓';
+}
+
+/* Loading States */
+.loading-spinner {
+  @apply animate-spin w-6 h-6 border-2 border-slate-200 border-t-brave-blue-600 rounded-full;
+}
+
+/* Responsive Design */
+@media (max-width: 1024px) {
+  .container {
+    @apply px-6;
+  }
+}
+
+@media (max-width: 768px) {
+  .container {
+    @apply px-4;
+  }
+  
+  h1 {
+    @apply text-3xl;
+  }
+  
+  .card {
+    @apply mx-4;
+  }
+  
+  /* Mobile-friendly wizard steps */
+  .wizard-step {
+    @apply text-sm;
+  }
+  
+  .wizard-step .step-title {
+    @apply text-xs;
+  }
+  
+  .wizard-step .step-description {
+    @apply hidden;
+  }
+  
+  /* Mobile form adjustments */
+  .btn-primary, .btn-secondary {
+    @apply px-4 py-2 text-sm;
+  }
+  
+  .input-field {
+    @apply text-base; /* Prevent zoom on iOS */
+  }
+  
+  /* Mobile navigation buttons */
+  .nav-buttons {
+    @apply flex-col space-y-3;
+  }
+  
+  .nav-buttons button {
+    @apply w-full;
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    @apply px-2;
+  }
+  
+  h1 {
+    @apply text-2xl;
+  }
+  
+  h2 {
+    @apply text-xl;
+  }
+  
+  .card {
+    @apply mx-2 p-6;
+  }
+  
+  /* Compact wizard steps for very small screens */
+  .wizard-steps {
+    @apply grid grid-cols-5 gap-2 text-xs;
+  }
+  
+  .wizard-step::before {
+    @apply w-6 h-6 text-xs;
+  }
+}
+
+/* Accessibility */
+.sr-only {
+  @apply absolute w-px h-px p-0 -m-px overflow-hidden whitespace-nowrap border-0;
+}
+
+/* Focus styles for better accessibility */
+.focus-visible:focus,
+button:focus,
+input:focus,
+select:focus,
+textarea:focus {
+  @apply outline-none ring-2 ring-brave-blue-500 ring-offset-2;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  .btn-primary {
+    @apply border-2 border-black;
+  }
+  
+  .btn-secondary {
+    @apply border-2 border-white;
+  }
+  
+  .card {
+    @apply border-2 border-slate-400;
+  }
+}
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in,
+  .slide-up,
+  .pulse-gold {
+    animation: none;
+  }
+  
+  .loading-spinner {
+    animation: none;
+    @apply border-l-brave-blue-600;
+  }
+  
+  .transition-all,
+  .transition-colors {
+    transition: none;
+  }
+}
+
+/* Dark mode support (basic) */
+@media (prefers-color-scheme: dark) {
+  /* Note: This is basic dark mode - full implementation would require */
+  /* more extensive color adjustments throughout the design system */
+  .card {
+    @apply bg-slate-800 text-white border-slate-600;
+  }
+  
+  .input-field {
+    @apply bg-slate-700 text-white border-slate-600;
+  }
+}
+
+/* Skip link for screen readers */
+.skip-link {
+  @apply absolute -top-40 left-6 bg-brave-blue-900 text-white px-4 py-2 rounded-md z-50;
+  transition: top 0.3s;
+}
+
+.skip-link:focus {
+  @apply top-6;
+}
+
+/* ARIA live region for screen reader announcements */
+.sr-live {
+  @apply sr-only;
+}
+
+/* Keyboard navigation helpers */
+.keyboard-focusable {
+  @apply focus:outline-none focus:ring-2 focus:ring-brave-blue-500 focus:ring-offset-2;
+}
+
+/* Error and success states for screen readers */
+.field-error {
+  @apply text-red-600 text-sm mt-1;
+}
+
+.field-success {
+  @apply text-trust-green-600 text-sm mt-1;
+}
+
+/* Loading states accessibility */
+.loading-content {
+  @apply relative;
+}
+
+.loading-content[aria-busy="true"]::after {
+  content: '';
+  @apply absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center;
+}
+
+/* Form validation states */
+.field-invalid {
+  @apply border-red-300 focus:border-red-500 focus:ring-red-500;
+}
+
+.field-valid {
+  @apply border-trust-green-300 focus:border-trust-green-500 focus:ring-trust-green-500;
+}
+
+/* Wallet Connection Styles */
+.wallet-option {
+  @apply flex items-center p-4 border border-slate-200 rounded-lg hover:border-brave-blue-300 hover:bg-brave-blue-50 transition-all duration-200 cursor-pointer;
+}
+
+.wallet-option:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Status Indicators */
+.status-indicator {
+  @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
+}
+
+.status-indicator.success {
+  @apply bg-trust-green-100 text-trust-green-800;
+}
+
+.status-indicator.warning {
+  @apply bg-yellow-100 text-yellow-800;
+}
+
+.status-indicator.error {
+  @apply bg-red-100 text-red-800;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-100;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-400 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-500;
+}
