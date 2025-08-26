@@ -39,12 +39,9 @@ const waitForDependencies = () => {
 waitForDependencies().then((deps) => {
   console.log('✅ Enhanced Wallet Connect loaded with multi-wallet support');
   window.walletHasEthers = deps.hasEthers;
-}).catch((error) => {
-  console.error('❌ Enhanced Wallet Connect failed to load:', error);
-});
-
-// WalletConnect configuration
-const WALLETCONNECT_PROJECT_ID = 'f3c5c6c7e2d1a0b9f3c5c6c7e2d1a0b9'; // Placeholder
+  
+  // WalletConnect configuration
+  const WALLETCONNECT_PROJECT_ID = 'f3c5c6c7e2d1a0b9f3c5c6c7e2d1a0b9'; // Placeholder
 
 // Supported wallets configuration
 const SUPPORTED_WALLETS = [
@@ -134,30 +131,23 @@ const useEnhancedWallet = () => {
       });
 
       if (accounts && accounts.length > 0) {
+        const address = accounts[0];
+        const numericChainId = parseInt(chainId, 16);
+        
         return {
-          address: accounts[0],
-          chainId: parseInt(chainId, 16),
-          provider: window.ethereum
+          id: `${walletId}-${address}`,
+          address,
+          chainId: numericChainId,
+          walletType: 'injected',
+          walletName: SUPPORTED_WALLETS.find(w => w.id === walletId)?.name || walletId,
+          provider: window.ethereum,
+          connectedAt: Date.now(),
+          isActive: true
         };
       } else {
         throw new Error('No accounts found');
       }
     }
-  };
-      throw new Error('Please switch to Arbitrum Sepolia or Optimism Sepolia');
-    }
-
-    return {
-      id: `${walletId}-${address}`,
-      address,
-      chainId: network.chainId,
-      walletType: 'injected',
-      walletName: SUPPORTED_WALLETS.find(w => w.id === walletId)?.name || walletId,
-      provider,
-      signer,
-      connectedAt: Date.now(),
-      isActive: true
-    };
   };
 
   // Connect to WalletConnect
@@ -604,7 +594,9 @@ const useWalletWithNotifications = () => {
   };
 };
 
-// Export to global scope
-window.useWalletWithNotifications = useWalletWithNotifications;
+  // Export to global scope
+  window.useWalletWithNotifications = useWalletWithNotifications;
 
-console.log('✅ Enhanced Wallet Connect loaded with multi-wallet support');
+}).catch((error) => {
+  console.error('❌ Enhanced Wallet Connect failed to load:', error);
+});
