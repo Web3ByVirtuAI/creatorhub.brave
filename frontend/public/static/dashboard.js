@@ -72,7 +72,7 @@ function showDashboard() {
   // Create dashboard modal
   const dashboardModal = document.createElement('div');
   dashboardModal.id = 'dashboard-modal';
-  dashboardModal.className = 'fixed inset-0 z-50 bg-white';
+  dashboardModal.className = 'fixed inset-0 z-[60] bg-white';
   dashboardModal.innerHTML = createDashboardHTML();
   
   document.body.appendChild(dashboardModal);

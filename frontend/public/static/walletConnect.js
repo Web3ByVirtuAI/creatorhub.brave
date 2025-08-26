@@ -1,11 +1,47 @@
 // CreatorHub.Brave - Enhanced Wallet Connection
 // Multi-wallet support with MetaMask, WalletConnect, and session management
 
-// Wait for React to be available
-if (typeof React === 'undefined') {
-  console.error('React is not loaded');
-  throw new Error('React library is required');
-}
+// Enhanced dependency check with graceful fallback
+const waitForDependencies = () => {
+  return new Promise((resolve, reject) => {
+    let attempts = 0;
+    const maxAttempts = 30; // 3 seconds max wait
+    
+    const checkDependencies = () => {
+      attempts++;
+      
+      // Check for React (required)
+      if (typeof React === 'undefined') {
+        if (attempts >= maxAttempts) {
+          reject(new Error('React is required but not loaded'));
+          return;
+        }
+        setTimeout(checkDependencies, 100);
+        return;
+      }
+      
+      // Ethers.js is optional for basic functionality
+      if (typeof ethers !== 'undefined') {
+        resolve({ hasEthers: true });
+      } else if (attempts >= maxAttempts) {
+        console.warn('⚠️ Ethers.js not available - using fallback wallet connection');
+        resolve({ hasEthers: false });
+      } else {
+        setTimeout(checkDependencies, 100);
+      }
+    };
+    
+    checkDependencies();
+  });
+};
+
+// Initialize when dependencies are ready
+waitForDependencies().then((deps) => {
+  console.log('✅ Enhanced Wallet Connect loaded with multi-wallet support');
+  window.walletHasEthers = deps.hasEthers;
+}).catch((error) => {
+  console.error('❌ Enhanced Wallet Connect failed to load:', error);
+});
 
 // WalletConnect configuration
 const WALLETCONNECT_PROJECT_ID = 'f3c5c6c7e2d1a0b9f3c5c6c7e2d1a0b9'; // Placeholder
@@ -68,15 +104,46 @@ const useEnhancedWallet = () => {
       throw new Error(`${walletId} not detected. Please install the wallet extension.`);
     }
 
-    const provider = new ethers.providers.Web3Provider(window.ethereum);
-    await provider.send('eth_requestAccounts', []);
+    // Use ethers if available, otherwise use basic web3 calls
+    if (window.walletHasEthers && typeof ethers !== 'undefined') {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      await provider.send('eth_requestAccounts', []);
 
-    const signer = provider.getSigner();
-    const address = await signer.getAddress();
-    const network = await provider.getNetwork();
+      const signer = provider.getSigner();
+      const address = await signer.getAddress();
+      const network = await provider.getNetwork();
 
-    // Validate network
-    if (![421614, 11155420].includes(network.chainId)) {
+      // Validate network
+      if (![421614, 11155420].includes(network.chainId)) {
+        console.warn('Please switch to Arbitrum Sepolia or Optimism Sepolia testnet');
+      }
+
+      return {
+        address,
+        chainId: network.chainId,
+        provider
+      };
+    } else {
+      // Fallback to basic web3 calls
+      const accounts = await window.ethereum.request({ 
+        method: 'eth_requestAccounts' 
+      });
+      
+      const chainId = await window.ethereum.request({ 
+        method: 'eth_chainId' 
+      });
+
+      if (accounts && accounts.length > 0) {
+        return {
+          address: accounts[0],
+          chainId: parseInt(chainId, 16),
+          provider: window.ethereum
+        };
+      } else {
+        throw new Error('No accounts found');
+      }
+    }
+  };
       throw new Error('Please switch to Arbitrum Sepolia or Optimism Sepolia');
     }
 

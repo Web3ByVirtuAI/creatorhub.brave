@@ -19,6 +19,18 @@ function initializeVaultWizard() {
   console.log('🧙‍♂️ Initializing Vault Creation Wizard');
 }
 
+// Open dashboard and close success modal
+function openDashboardAndClose(button) {
+  button.parentElement.parentElement.parentElement.remove(); // Close success modal
+  
+  // Open dashboard if function exists
+  if (typeof showDashboard === 'function') {
+    showDashboard();
+  } else {
+    showToast('Dashboard is loading...', 'info');
+  }
+}
+
 // Show the vault creation wizard
 function showVaultWizard() {
   console.log('🚀 Opening Vault Creation Wizard');
@@ -29,7 +41,7 @@ function showVaultWizard() {
   // Create wizard modal
   const wizardModal = document.createElement('div');
   wizardModal.id = 'vault-wizard-modal';
-  wizardModal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
+  wizardModal.className = 'fixed inset-0 z-[55] flex items-center justify-center bg-black bg-opacity-50';
   wizardModal.innerHTML = createWizardHTML();
   
   document.body.appendChild(wizardModal);
@@ -67,19 +79,40 @@ function createWizardHTML() {
       </div>
       
       <!-- Wizard Navigation -->
-      <div class="bg-gray-50 px-8 py-4 rounded-b-2xl flex justify-between">
-        <button onclick="previousStep()" 
-                id="prev-btn"
-                class="px-6 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-50 ${wizardState.currentStep === 1 ? 'opacity-50 cursor-not-allowed' : ''}"
-                ${wizardState.currentStep === 1 ? 'disabled' : ''}>
-          <i class="fas fa-arrow-left mr-2"></i>Previous
-        </button>
+      <div class="bg-gray-50 px-8 py-4 rounded-b-2xl">
+        <div class="flex justify-between items-center">
+          <div class="text-sm text-gray-600">
+            Step ${wizardState.currentStep} of 5
+          </div>
+          <div class="flex space-x-3">
+            ${wizardState.currentStep > 1 ? `
+              <button onclick="goToStep(${wizardState.currentStep - 1})" 
+                      class="px-4 py-2 border border-gray-300 rounded-lg font-medium text-gray-700 hover:bg-gray-100 transition-colors">
+                <i class="fas fa-arrow-left mr-2"></i>Back
+              </button>
+            ` : ''}
+            
+            ${wizardState.currentStep < 5 ? `
+              <button onclick="nextStep()" 
+                      id="next-btn"
+                      class="px-6 py-2 bg-vault-gold-500 hover:bg-vault-gold-600 text-white rounded-lg font-medium transition-colors">
+                Continue<i class="fas fa-arrow-right ml-2"></i>
+              </button>
+            ` : `
+              <button onclick="createVault()" 
+                      id="create-btn"
+                      class="px-6 py-2 bg-trust-green-500 hover:bg-trust-green-600 text-white rounded-lg font-medium transition-colors">
+                <i class="fas fa-plus mr-2"></i>Create Vault
+              </button>
+            `}
+          </div>
+        </div>
         
-        <button onclick="nextStep()" 
-                id="next-btn"
-                class="px-6 py-2 bg-vault-gold-500 hover:bg-vault-gold-600 text-white rounded-lg font-medium">
-          Next<i class="fas fa-arrow-right ml-2"></i>
-        </button>
+        <!-- Progress Indicator -->
+        <div class="mt-4 w-full bg-gray-200 rounded-full h-1.5">
+          <div class="bg-vault-gold-500 h-1.5 rounded-full transition-all duration-300" 
+               style="width: ${(wizardState.currentStep / 5) * 100}%"></div>
+        </div>
       </div>
     </div>
   `;
@@ -98,9 +131,14 @@ function createProgressSteps() {
   return steps.map(step => {
     const isActive = wizardState.currentStep === step.number;
     const isCompleted = wizardState.currentStep > step.number;
+    const canNavigate = step.number <= Math.max(wizardState.currentStep, 1); // Can navigate to current or previous steps
     
     return `
-      <div class="flex flex-col items-center ${isActive ? 'text-vault-gold-300' : isCompleted ? 'text-green-300' : 'text-gray-400'}">
+      <div class="flex flex-col items-center cursor-pointer transition-all hover:scale-105 ${
+        isActive ? 'text-vault-gold-300' : isCompleted ? 'text-green-300' : 'text-gray-400'
+      } ${canNavigate ? 'hover:opacity-80' : ''}" 
+           onclick="${canNavigate ? `goToStep(${step.number})` : ''}"
+           title="${canNavigate ? `Go to step ${step.number}: ${step.title}` : step.title}">
         <div class="w-10 h-10 rounded-full border-2 flex items-center justify-center mb-2 ${
           isCompleted ? 'bg-green-500 border-green-500' : 
           isActive ? 'bg-vault-gold-500 border-vault-gold-500' : 'border-gray-400'
@@ -322,19 +360,113 @@ function createGuardianInputs() {
   `).join('');
 }
 
+// Form data persistence functions
+function saveCurrentStepData() {
+  const step = wizardState.currentStep;
+  
+  switch (step) {
+    case 1: // Unlock Date & Time
+      const dateInput = document.getElementById('unlock-date');
+      const timeInput = document.getElementById('unlock-time');
+      if (dateInput) wizardState.formData.unlockDate = dateInput.value;
+      if (timeInput) wizardState.formData.unlockTime = timeInput.value;
+      break;
+      
+    case 2: // Initial Deposit
+      const depositInput = document.getElementById('deposit-amount');
+      if (depositInput) wizardState.formData.depositAmount = depositInput.value;
+      break;
+      
+    case 3: // Guardians
+      const guardianInputs = document.querySelectorAll('.guardian-input');
+      const thresholdInput = document.getElementById('guardian-threshold');
+      
+      wizardState.formData.guardians = [];
+      guardianInputs.forEach(input => {
+        if (input.value.trim()) {
+          wizardState.formData.guardians.push(input.value.trim());
+        }
+      });
+      
+      if (thresholdInput) {
+        wizardState.formData.guardianThreshold = parseInt(thresholdInput.value) || 1;
+      }
+      break;
+  }
+}
+
+function restoreStepData() {
+  const step = wizardState.currentStep;
+  
+  // Use setTimeout to ensure DOM is ready
+  setTimeout(() => {
+    switch (step) {
+      case 1: // Unlock Date & Time
+        const dateInput = document.getElementById('unlock-date');
+        const timeInput = document.getElementById('unlock-time');
+        if (dateInput && wizardState.formData.unlockDate) {
+          dateInput.value = wizardState.formData.unlockDate;
+        }
+        if (timeInput && wizardState.formData.unlockTime) {
+          timeInput.value = wizardState.formData.unlockTime;
+        }
+        break;
+        
+      case 2: // Initial Deposit
+        const depositInput = document.getElementById('deposit-amount');
+        if (depositInput && wizardState.formData.depositAmount) {
+          depositInput.value = wizardState.formData.depositAmount;
+        }
+        break;
+        
+      case 3: // Guardians
+        const thresholdInput = document.getElementById('guardian-threshold');
+        if (thresholdInput && wizardState.formData.guardianThreshold) {
+          thresholdInput.value = wizardState.formData.guardianThreshold;
+        }
+        
+        // Restore guardian addresses
+        wizardState.formData.guardians.forEach((guardian, index) => {
+          const guardianInput = document.querySelector(`#guardian-${index + 1}`);
+          if (guardianInput) {
+            guardianInput.value = guardian;
+          }
+        });
+        break;
+    }
+  }, 10);
+}
+
+// Enhanced step navigation with data persistence
+function goToStep(stepNumber) {
+  if (stepNumber < 1 || stepNumber > 5) return;
+  
+  // Save current step data before changing
+  if (wizardState.currentStep >= 1 && wizardState.currentStep <= 3) {
+    saveCurrentStepData();
+  }
+  
+  wizardState.currentStep = stepNumber;
+  updateWizardContent();
+  
+  // Restore data for the new step
+  restoreStepData();
+  
+  if (stepNumber === 4) {
+    updateReviewData();
+  }
+}
+
 // Wizard navigation functions
 function nextStep() {
   if (canProceedToNextStep()) {
-    wizardState.currentStep++;
-    updateWizardContent();
-    updateReviewData();
+    goToStep(wizardState.currentStep + 1);
   }
 }
 
 function previousStep() {
   if (wizardState.currentStep > 1) {
-    wizardState.currentStep--;
-    updateWizardContent();
+    goToStep(wizardState.currentStep - 1);
   }
 }
 
@@ -354,33 +486,10 @@ function canProceedToNextStep() {
 }
 
 function updateWizardContent() {
-  const wizardContent = document.getElementById('wizard-content');
-  const prevBtn = document.getElementById('prev-btn');
-  const nextBtn = document.getElementById('next-btn');
-  
-  if (wizardContent) {
-    wizardContent.innerHTML = getStepContent(wizardState.currentStep);
-  }
-  
-  // Update navigation buttons
-  if (prevBtn) {
-    if (wizardState.currentStep === 1) {
-      prevBtn.classList.add('opacity-50', 'cursor-not-allowed');
-      prevBtn.disabled = true;
-    } else {
-      prevBtn.classList.remove('opacity-50', 'cursor-not-allowed');
-      prevBtn.disabled = false;
-    }
-  }
-  
-  if (nextBtn && wizardState.currentStep === 5) {
-    nextBtn.style.display = 'none';
-  }
-  
-  // Update progress steps
-  const progressContainer = document.querySelector('.mt-6');
-  if (progressContainer) {
-    progressContainer.innerHTML = createProgressSteps();
+  // Update the entire modal content to reflect the new step
+  const modal = document.getElementById('vault-wizard-modal');
+  if (modal) {
+    modal.innerHTML = createWizardHTML();
   }
 }
 
@@ -506,7 +615,10 @@ function updateReviewData() {
 
 // Vault creation
 function createVault() {
-  const btn = document.getElementById('create-vault-btn');
+  // Save current step data
+  saveCurrentStepData();
+  
+  const btn = document.getElementById('create-vault-btn') || document.getElementById('create-btn');
   if (btn) {
     btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Creating Vault...';
     btn.disabled = true;
@@ -515,17 +627,41 @@ function createVault() {
   
   showToast('Creating your vault...', 'info');
   
+  // Create new vault object from form data
+  const newVault = {
+    id: '0x' + Math.random().toString(16).substring(2, 10) + '...' + Math.random().toString(16).substring(2, 6),
+    name: 'Custom Vault', // You could add a name field to the wizard
+    address: '0x' + Math.random().toString(16).substring(2, 42),
+    status: 'locked',
+    balance: wizardState.formData.depositAmount || '0',
+    balanceUSD: (parseFloat(wizardState.formData.depositAmount || '0') * 2225).toLocaleString(), // Mock ETH to USD
+    unlockDate: wizardState.formData.unlockDate + 'T' + wizardState.formData.unlockTime + ':00Z',
+    timeRemaining: new Date(wizardState.formData.unlockDate + 'T' + wizardState.formData.unlockTime).getTime() - Date.now(),
+    guardians: wizardState.formData.guardians.filter(g => g.trim()).map((address, index) => ({
+      address: address,
+      name: `Guardian ${index + 1}`
+    })),
+    guardianThreshold: wizardState.formData.guardianThreshold,
+    transactions: []
+  };
+  
   setTimeout(() => {
+    // Add to dashboard state if it exists
+    if (typeof dashboardState !== 'undefined') {
+      dashboardState.vaults.push(newVault);
+    }
+    
     showToast('🎉 Vault created successfully!', 'success');
+    
     setTimeout(() => {
       closeWizard();
-      showVaultCreationSuccess();
+      showVaultCreationSuccess(newVault);
     }, 1000);
   }, 3000);
 }
 
 // Show success modal
-function showVaultCreationSuccess() {
+function showVaultCreationSuccess(newVault) {
   const modal = document.createElement('div');
   modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
   modal.innerHTML = `
@@ -537,12 +673,24 @@ function showVaultCreationSuccess() {
       <p class="text-gray-600 mb-6">Your secure time-locked vault has been successfully created and deployed.</p>
       <div class="bg-gray-50 rounded-lg p-4 mb-6">
         <div class="text-sm text-gray-600 mb-1">Vault Address:</div>
-        <div class="font-mono text-sm">0x742d35...Eb1b4870</div>
+        <div class="font-mono text-sm">${newVault ? newVault.address : '0x742d35...Eb1b4870'}</div>
+        ${newVault && newVault.balance > 0 ? `
+          <div class="mt-2">
+            <div class="text-sm text-gray-600 mb-1">Initial Deposit:</div>
+            <div class="font-semibold">${newVault.balance} ETH</div>
+          </div>
+        ` : ''}
       </div>
-      <button onclick="this.parentElement.parentElement.remove()" 
-              class="w-full bg-vault-gold-500 hover:bg-vault-gold-600 text-white font-bold py-3 px-6 rounded-lg">
-        Continue to Dashboard
-      </button>
+      <div class="space-y-3">
+        <button onclick="openDashboardAndClose(this)" 
+                class="w-full bg-vault-gold-500 hover:bg-vault-gold-600 text-white font-bold py-3 px-6 rounded-lg">
+          <i class="fas fa-tachometer-alt mr-2"></i>View in Dashboard
+        </button>
+        <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-6 rounded-lg">
+          Close
+        </button>
+      </div>
     </div>
   `;
   document.body.appendChild(modal);

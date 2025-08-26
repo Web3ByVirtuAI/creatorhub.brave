@@ -57,8 +57,8 @@ export const renderer = jsxRenderer(({ children }) => {
         <script crossOrigin="anonymous" src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
         <script crossOrigin="anonymous" src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
         
-        {/* Ethers.js */}
-        <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+        {/* Ethers.js - using alternative CDN */}
+        <script src="https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js"></script>
         
         {/* Core utility scripts - load order matters */}
         <script src="/static/validation.js"></script>
