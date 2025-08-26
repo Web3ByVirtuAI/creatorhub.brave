@@ -60,7 +60,14 @@ export const renderer = jsxRenderer(({ children }) => {
         {/* Ethers.js */}
         <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
         
-        {/* Simple working application */}
+        {/* Core utility scripts - load order matters */}
+        <script src="/static/validation.js"></script>
+        <script src="/static/walletConnect.js"></script>
+        <script src="/static/notifications.js"></script>
+        <script src="/static/dashboard.js"></script>
+        <script src="/static/vault-wizard.js"></script>
+        
+        {/* Main application - load last */}
         <script src="/static/simple-app.js"></script>
       </body>
     </html>

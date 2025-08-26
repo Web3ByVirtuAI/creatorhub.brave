@@ -420,13 +420,13 @@ app.get('/', (c) => {
                   CreatorHub.Brave
                 </a>
                 <div className="hidden md:flex space-x-6">
-                  <a href="#home" className="text-sm font-medium hover:text-vault-gold-300 transition-colors">
+                  <a href="#home" onClick="scrollToTop()" className="text-sm font-medium hover:text-vault-gold-300 transition-colors">
                     Home
                   </a>
-                  <a href="#create" className="text-sm font-medium hover:text-vault-gold-300 transition-colors">
+                  <a href="#create" onClick="showCreateVault()" className="text-sm font-medium hover:text-vault-gold-300 transition-colors">
                     Create Vault
                   </a>
-                  <a href="#dashboard" className="text-sm font-medium hover:text-vault-gold-300 transition-colors">
+                  <a href="#dashboard" onClick="openDashboard()" className="text-sm font-medium hover:text-vault-gold-300 transition-colors">
                     Dashboard
                   </a>
                 </div>
@@ -442,6 +442,7 @@ app.get('/', (c) => {
                 {/* Wallet connection will be replaced by enhanced version */}
                 <button 
                   id="connect-wallet-btn" 
+                  onClick="scrollToWallets()"
                   className="bg-vault-gold-500 hover:bg-vault-gold-600 text-white px-4 py-2 rounded-lg font-medium transition-colors"
                 >
                   Connect Wallet

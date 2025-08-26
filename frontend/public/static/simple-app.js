@@ -15,36 +15,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const createMainContent = () => {
     return `
       <div class="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
-        <!-- Header Navigation -->
-        <header class="bg-white shadow-sm border-b border-slate-200">
-          <div class="container mx-auto px-4">
-            <div class="flex items-center justify-between h-16">
-              <!-- Logo -->
-              <div class="flex items-center">
-                <div class="w-10 h-10 bg-gradient-to-br from-vault-gold-400 to-vault-gold-600 rounded-xl flex items-center justify-center mr-3">
-                  <i class="fas fa-shield-alt text-white text-lg"></i>
-                </div>
-                <div>
-                  <div class="text-xl font-bold text-slate-900">CreatorHub<span class="text-vault-gold-600">.Brave</span></div>
-                </div>
-              </div>
-              
-              <!-- Navigation & Wallet -->
-              <div class="flex items-center space-x-4">
-                <button onclick="openDashboard()" class="text-slate-600 hover:text-slate-900 font-medium">
-                  <i class="fas fa-tachometer-alt mr-2"></i>Dashboard
-                </button>
-                <button onclick="showCreateVault()" class="text-slate-600 hover:text-slate-900 font-medium">
-                  <i class="fas fa-plus mr-2"></i>Create Vault
-                </button>
-                <button id="connect-wallet-btn" onclick="scrollToWallets()" 
-                        class="bg-vault-gold-500 hover:bg-vault-gold-600 text-white px-4 py-2 rounded-lg font-medium transition-colors">
-                  <i class="fas fa-wallet mr-2"></i>Connect Wallet
-                </button>
-              </div>
-            </div>
-          </div>
-        </header>
+
         
         <!-- Hero Section -->
         <section class="relative bg-gradient-to-br from-brave-blue-900 via-brave-blue-800 to-brave-blue-700 text-white overflow-hidden">
@@ -454,6 +425,11 @@ function scrollToWallets() {
   if (walletSection) {
     walletSection.scrollIntoView({ behavior: 'smooth' });
   }
+}
+
+// Scroll to top of page
+function scrollToTop() {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // Check for existing wallet connection
