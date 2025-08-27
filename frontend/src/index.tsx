@@ -42,7 +42,12 @@ app.get('/api/contracts', (c) => {
 })
 
 app.get('/api/health', (c) => {
-  return c.json({ status: 'healthy', timestamp: new Date().toISOString() })
+  return c.json({ 
+    status: 'healthy', 
+    timestamp: new Date().toISOString(),
+    version: '2025-08-27-cache-bust',
+    buildTime: Date.now()
+  })
 })
 
 // Vault management API endpoints
