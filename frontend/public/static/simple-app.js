@@ -343,6 +343,9 @@ async function connectWallet(walletType) {
       // Update global wallet state
       window.walletState.updateWalletState(address, provider, walletType);
       
+      // Start connection monitoring
+      window.walletState.startConnectionMonitoring();
+      
       return { success: true, address, provider };
     }
     
@@ -363,21 +366,46 @@ function updateHeaderWalletButton(address) {
   }
 }
 
-// Global wallet state management
+// Enhanced Global wallet state management with connection monitoring
 window.walletState = {
   isConnected: false,
   address: null,
   provider: null,
   type: null,
+  lastConnectionCheck: 0,
+  connectionMonitor: null,
   
-  // Get current wallet state
-  getWalletInfo() {
+  // Get current wallet state with real-time validation
+  async getWalletInfo(validateConnection = false) {
     try {
+      // First check stored wallet data
       const stored = localStorage.getItem('connectedWallet');
       if (stored) {
         const walletData = JSON.parse(stored);
         // Check if connection is less than 24 hours old
         if (Date.now() - walletData.timestamp < 24 * 60 * 60 * 1000) {
+          
+          // Optional: Validate the connection is still active
+          if (validateConnection && window.ethereum) {
+            try {
+              const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+              if (accounts.length > 0 && accounts[0].toLowerCase() === walletData.address.toLowerCase()) {
+                console.log('✅ Wallet connection validated:', walletData.address);
+                this.isConnected = true;
+                this.address = walletData.address;
+                this.type = walletData.type;
+                return walletData;
+              } else {
+                console.warn('⚠️ Stored wallet address mismatch with MetaMask');
+                this.clearWalletState();
+                return null;
+              }
+            } catch (error) {
+              console.warn('⚠️ Failed to validate wallet connection:', error);
+              // Return stored data anyway, let the calling function handle validation
+            }
+          }
+          
           this.isConnected = true;
           this.address = walletData.address;
           this.type = walletData.type;
@@ -396,6 +424,7 @@ window.walletState = {
     this.address = address;
     this.provider = provider;
     this.type = type;
+    this.lastConnectionCheck = Date.now();
   },
   
   // Clear wallet state
@@ -405,6 +434,77 @@ window.walletState = {
     this.provider = null;
     this.type = null;
     localStorage.removeItem('connectedWallet');
+    this.stopConnectionMonitoring();
+  },
+  
+  // Start monitoring wallet connection
+  startConnectionMonitoring() {
+    if (this.connectionMonitor) {
+      clearInterval(this.connectionMonitor);
+    }
+    
+    this.connectionMonitor = setInterval(async () => {
+      if (window.ethereum && this.address) {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts.length === 0 || accounts[0].toLowerCase() !== this.address.toLowerCase()) {
+            console.warn('⚠️ Wallet connection lost, clearing state');
+            this.clearWalletState();
+            // Optionally show notification
+            if (typeof showToast === 'function') {
+              showToast('Wallet connection lost. Please reconnect.', 'warning');
+            }
+          }
+        } catch (error) {
+          console.warn('Connection monitor error:', error);
+        }
+      }
+    }, 5000); // Check every 5 seconds
+  },
+  
+  // Stop monitoring wallet connection
+  stopConnectionMonitoring() {
+    if (this.connectionMonitor) {
+      clearInterval(this.connectionMonitor);
+      this.connectionMonitor = null;
+    }
+  },
+  
+  // Attempt to reconnect wallet
+  async attemptReconnection() {
+    console.log('🔄 Attempting wallet reconnection...');
+    
+    if (!window.ethereum) {
+      throw new Error('MetaMask not available');
+    }
+    
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (accounts.length > 0) {
+        const address = accounts[0];
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        
+        // Update wallet state
+        this.updateWalletState(address, provider, 'MetaMask');
+        
+        // Update localStorage
+        localStorage.setItem('connectedWallet', JSON.stringify({
+          address: address,
+          type: 'MetaMask',
+          timestamp: Date.now()
+        }));
+        
+        console.log('✅ Wallet reconnected:', address);
+        if (typeof showToast === 'function') {
+          showToast('Wallet reconnected successfully!', 'success');
+        }
+        
+        return { address, provider, type: 'MetaMask' };
+      }
+    } catch (error) {
+      console.error('❌ Failed to reconnect wallet:', error);
+      throw error;
+    }
   }
 };
 

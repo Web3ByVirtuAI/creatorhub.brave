@@ -21,6 +21,59 @@ function initializeVaultWizard() {
   console.log('🧙‍♂️ Initializing Vault Creation Wizard');
 }
 
+// Refresh wallet connection
+async function refreshWalletConnection() {
+  try {
+    showToast('🔄 Refreshing wallet connection...', 'info');
+    
+    if (window.walletState && typeof window.walletState.attemptReconnection === 'function') {
+      const refreshedWallet = await window.walletState.attemptReconnection();
+      wizardState.connectedWallet = refreshedWallet;
+      
+      // Update the wizard header
+      const wizardModal = document.getElementById('vault-wizard-modal');
+      if (wizardModal) {
+        const wizardContent = wizardModal.querySelector('.bg-white');
+        if (wizardContent) {
+          wizardContent.innerHTML = createWizardHTML().match(/<div class="bg-white[^>]*>(.*)<\/div>$/s)[1];
+        }
+      }
+      
+      showToast('✅ Wallet connection refreshed!', 'success');
+    } else {
+      throw new Error('Wallet refresh not available');
+    }
+  } catch (error) {
+    console.error('Failed to refresh wallet:', error);
+    showToast('❌ Failed to refresh wallet: ' + error.message, 'error');
+  }
+}
+
+// Reconnect wallet from wizard
+async function reconnectWallet() {
+  try {
+    showToast('🔄 Reconnecting wallet...', 'info');
+    
+    if (window.walletState && typeof window.walletState.attemptReconnection === 'function') {
+      const reconnectedWallet = await window.walletState.attemptReconnection();
+      wizardState.connectedWallet = reconnectedWallet;
+      
+      // Update the wizard header
+      const wizardModal = document.getElementById('vault-wizard-modal');
+      if (wizardModal) {
+        wizardModal.innerHTML = createWizardHTML();
+      }
+      
+      showToast('✅ Wallet reconnected successfully!', 'success');
+    } else {
+      throw new Error('Wallet reconnection not available');
+    }
+  } catch (error) {
+    console.error('Failed to reconnect wallet:', error);
+    showToast('❌ Failed to reconnect wallet: ' + error.message, 'error');
+  }
+}
+
 // Open dashboard and close success modal
 function openDashboardAndClose(button) {
   button.parentElement.parentElement.parentElement.remove(); // Close success modal
@@ -98,12 +151,32 @@ function createWizardHTML() {
                 <div class="text-sm text-brave-blue-200">Connected Wallet:</div>
                 <div class="font-mono text-sm">${wizardState.connectedWallet.address}</div>
               </div>
-              <div class="text-xs bg-trust-green-100 text-trust-green-800 px-2 py-1 rounded">
-                ${wizardState.connectedWallet.type}
+              <div class="flex items-center space-x-2">
+                <div class="text-xs bg-trust-green-100 text-trust-green-800 px-2 py-1 rounded">
+                  ${wizardState.connectedWallet.type}
+                </div>
+                <button onclick="refreshWalletConnection()" 
+                        class="text-xs bg-yellow-100 hover:bg-yellow-200 text-yellow-800 px-2 py-1 rounded transition-colors"
+                        title="Refresh wallet connection">
+                  <i class="fas fa-sync-alt"></i>
+                </button>
               </div>
             </div>
           </div>
-        ` : ''}
+        ` : `
+          <div class="bg-red-800 rounded-lg px-4 py-3 mb-6">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center">
+                <div class="w-3 h-3 bg-red-400 rounded-full mr-3"></div>
+                <div class="text-sm text-red-200">No wallet connected</div>
+              </div>
+              <button onclick="reconnectWallet()" 
+                      class="text-xs bg-red-100 hover:bg-red-200 text-red-800 px-3 py-1 rounded transition-colors">
+                <i class="fas fa-plug mr-1"></i>Reconnect
+              </button>
+            </div>
+          </div>
+        `}
         
         <!-- Step Progress Indicators -->
         <div class="flex justify-center mb-2">
@@ -753,23 +826,58 @@ function updateReviewData() {
   }
 }
 
-// Deploy vault smart contract
+// Deploy vault smart contract with enhanced wallet connection recovery
 async function deployVaultContract() {
   console.log('🔍 Checking wallet connection...', wizardState.connectedWallet);
   
-  if (!wizardState.connectedWallet || !wizardState.connectedWallet.address) {
-    // Try to get wallet info from global state as fallback
-    const walletInfo = window.walletState?.getWalletInfo();
-    console.log('🔍 Fallback wallet info:', walletInfo);
+  // Enhanced wallet connection validation and recovery
+  async function ensureWalletConnection() {
+    // Step 1: Check wizard state
+    if (wizardState.connectedWallet && wizardState.connectedWallet.address) {
+      console.log('✅ Using wizard wallet state:', wizardState.connectedWallet.address);
+      return wizardState.connectedWallet;
+    }
     
+    // Step 2: Check global state with validation
+    const walletInfo = await window.walletState?.getWalletInfo(true);
     if (walletInfo && walletInfo.address) {
       wizardState.connectedWallet = walletInfo;
-      console.log('✅ Using fallback wallet connection:', walletInfo.address);
+      console.log('✅ Using validated global wallet state:', walletInfo.address);
+      return walletInfo;
+    }
+    
+    // Step 3: Check if MetaMask is connected but our state is lost
+    if (window.ethereum) {
+      try {
+        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+        if (accounts.length > 0) {
+          console.log('🔄 MetaMask connected but state lost, recovering...');
+          const recoveredWallet = await window.walletState.attemptReconnection();
+          wizardState.connectedWallet = recoveredWallet;
+          return recoveredWallet;
+        }
+      } catch (error) {
+        console.warn('Failed to check MetaMask accounts:', error);
+      }
+    }
+    
+    // Step 4: No connection found, prompt user to reconnect
+    const shouldReconnect = confirm('Wallet connection lost. Would you like to reconnect your wallet to continue?');
+    if (shouldReconnect) {
+      try {
+        const reconnectedWallet = await window.walletState.attemptReconnection();
+        wizardState.connectedWallet = reconnectedWallet;
+        return reconnectedWallet;
+      } catch (error) {
+        throw new Error('Failed to reconnect wallet: ' + error.message);
+      }
     } else {
-      console.error('❌ No wallet connection found');
-      throw new Error('No wallet connected. Please connect your wallet first.');
+      throw new Error('Wallet connection required. Please connect your wallet first.');
     }
   }
+  
+  // Ensure we have a stable wallet connection
+  const wallet = await ensureWalletConnection();
 
   // Check if we have ethers.js available
   if (typeof ethers === 'undefined') {
@@ -783,14 +891,51 @@ async function deployVaultContract() {
 
   showToast('🔍 Checking network...', 'info');
 
-  // Get the provider from the connected wallet
-  const provider = new ethers.providers.Web3Provider(window.ethereum);
-  const signer = provider.getSigner();
-
-  // Verify the signer address matches connected wallet
-  const signerAddress = await signer.getAddress();
-  if (signerAddress.toLowerCase() !== wizardState.connectedWallet.address.toLowerCase()) {
-    throw new Error('Wallet address mismatch. Please reconnect your wallet.');
+  // Get the provider from the connected wallet with error handling
+  let provider, signer, signerAddress;
+  
+  try {
+    if (!window.ethereum) {
+      throw new Error('MetaMask not available. Please install MetaMask and try again.');
+    }
+    
+    provider = new ethers.providers.Web3Provider(window.ethereum);
+    signer = provider.getSigner();
+    
+    // Verify the signer address matches connected wallet
+    signerAddress = await signer.getAddress();
+    console.log('🔍 Signer address:', signerAddress);
+    console.log('🔍 Expected address:', wallet.address);
+    
+    if (signerAddress.toLowerCase() !== wallet.address.toLowerCase()) {
+      console.warn('⚠️ Wallet address mismatch detected');
+      // Try to recover by getting fresh wallet info
+      const freshWallet = await window.walletState.attemptReconnection();
+      if (freshWallet.address.toLowerCase() === signerAddress.toLowerCase()) {
+        wizardState.connectedWallet = freshWallet;
+        console.log('✅ Wallet address mismatch resolved');
+      } else {
+        throw new Error('Wallet address mismatch. Please disconnect and reconnect your wallet.');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Provider/signer error:', error);
+    if (error.message.includes('unknown account') || error.message.includes('not connected')) {
+      showToast('🔄 Attempting wallet reconnection...', 'info');
+      try {
+        const reconnectedWallet = await window.walletState.attemptReconnection();
+        wizardState.connectedWallet = reconnectedWallet;
+        
+        // Retry provider/signer creation
+        provider = new ethers.providers.Web3Provider(window.ethereum);
+        signer = provider.getSigner();
+        signerAddress = await signer.getAddress();
+      } catch (reconnectError) {
+        throw new Error('Failed to reconnect wallet: ' + reconnectError.message);
+      }
+    } else {
+      throw error;
+    }
   }
 
   // STRICT NETWORK VALIDATION - NO BYPASS
@@ -1007,18 +1152,47 @@ async function createVault() {
       btn.classList.remove('opacity-75');
     }
     
-    // Provide more helpful error messages
+    // Provide more helpful error messages with recovery options
     let errorMessage = error.message;
-    if (error.message.includes('No wallet connected')) {
-      errorMessage = 'Wallet connection lost. Please reconnect your wallet and try again.';
+    let showRecoveryOption = false;
+    
+    if (error.message.includes('No wallet connected') || 
+        error.message.includes('wallet connection lost') ||
+        error.message.includes('unknown account') ||
+        error.message.includes('not connected')) {
+      errorMessage = 'Wallet connection lost during vault creation.';
+      showRecoveryOption = true;
     } else if (error.message.includes('user rejected')) {
-      errorMessage = 'Transaction rejected. Please approve the transaction in MetaMask.';
+      errorMessage = 'Transaction rejected. Please approve the transaction in MetaMask to create your vault.';
     } else if (error.message.includes('insufficient funds')) {
       errorMessage = 'Insufficient ETH balance. You need at least 0.002 ETH for vault creation.';
+    } else if (error.message.includes('network changed')) {
+      errorMessage = 'Network changed during transaction. Please ensure you\'re on Sepolia testnet.';
+    } else if (error.message.includes('address mismatch')) {
+      errorMessage = 'Wallet address changed. Please refresh the connection and try again.';
+      showRecoveryOption = true;
     }
     
     showToast('❌ Failed to create vault: ' + errorMessage, 'error');
     console.error('Vault creation failed:', error);
+    
+    // Show wallet recovery option if connection-related error
+    if (showRecoveryOption) {
+      const shouldRecover = confirm('Would you like to reconnect your wallet and try again?');
+      if (shouldRecover) {
+        try {
+          await reconnectWallet();
+          // Update the button to show retry option
+          if (btn) {
+            btn.innerHTML = '<i class="fas fa-redo mr-2"></i>Retry Vault Creation';
+            btn.disabled = false;
+            btn.classList.remove('opacity-75');
+          }
+        } catch (reconnectError) {
+          showToast('❌ Failed to reconnect wallet: ' + reconnectError.message, 'error');
+        }
+      }
+    }
   }
 }
 
