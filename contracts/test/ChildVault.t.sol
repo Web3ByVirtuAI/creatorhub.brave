@@ -68,7 +68,7 @@ contract ChildVaultTest is Test {
         
         // Initialize vault as factory
         vm.prank(address(factory));
-        vault.initialize(beneficiary, allowedTokens, guardians, guardianThreshold);
+        vault.initialize(beneficiary, unlockTime, allowedTokens, guardians, guardianThreshold);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -97,7 +97,7 @@ contract ChildVaultTest is Test {
     function testCannotInitializeTwice() public {
         vm.prank(address(factory));
         vm.expectRevert();
-        vault.initialize(beneficiary, allowedTokens, guardians, guardianThreshold);
+        vault.initialize(beneficiary, unlockTime, allowedTokens, guardians, guardianThreshold);
     }
     
     function testCannotInitializeWithZeroBeneficiary() public {
@@ -105,7 +105,7 @@ contract ChildVaultTest is Test {
         
         vm.prank(address(factory));
         vm.expectRevert();
-        newVault.initialize(address(0), allowedTokens, guardians, guardianThreshold);
+        newVault.initialize(address(0), unlockTime, allowedTokens, guardians, guardianThreshold);
     }
 
     /*//////////////////////////////////////////////////////////////

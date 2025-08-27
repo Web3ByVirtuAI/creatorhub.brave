@@ -343,6 +343,9 @@ async function connectWallet(walletType) {
       // Update global wallet state
       window.walletState.updateWalletState(address, provider, walletType);
       
+      // Start connection monitoring
+      window.walletState.startConnectionMonitoring();
+      
       return { success: true, address, provider };
     }
     
@@ -363,21 +366,46 @@ function updateHeaderWalletButton(address) {
   }
 }
 
-// Global wallet state management
+// Enhanced Global wallet state management with connection monitoring
 window.walletState = {
   isConnected: false,
   address: null,
   provider: null,
   type: null,
+  lastConnectionCheck: 0,
+  connectionMonitor: null,
   
-  // Get current wallet state
-  getWalletInfo() {
+  // Get current wallet state with real-time validation
+  async getWalletInfo(validateConnection = false) {
     try {
+      // First check stored wallet data
       const stored = localStorage.getItem('connectedWallet');
       if (stored) {
         const walletData = JSON.parse(stored);
         // Check if connection is less than 24 hours old
         if (Date.now() - walletData.timestamp < 24 * 60 * 60 * 1000) {
+          
+          // Optional: Validate the connection is still active
+          if (validateConnection && window.ethereum) {
+            try {
+              const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+              if (accounts.length > 0 && accounts[0].toLowerCase() === walletData.address.toLowerCase()) {
+                console.log('✅ Wallet connection validated:', walletData.address);
+                this.isConnected = true;
+                this.address = walletData.address;
+                this.type = walletData.type;
+                return walletData;
+              } else {
+                console.warn('⚠️ Stored wallet address mismatch with MetaMask');
+                this.clearWalletState();
+                return null;
+              }
+            } catch (error) {
+              console.warn('⚠️ Failed to validate wallet connection:', error);
+              // Return stored data anyway, let the calling function handle validation
+            }
+          }
+          
           this.isConnected = true;
           this.address = walletData.address;
           this.type = walletData.type;
@@ -396,6 +424,7 @@ window.walletState = {
     this.address = address;
     this.provider = provider;
     this.type = type;
+    this.lastConnectionCheck = Date.now();
   },
   
   // Clear wallet state
@@ -405,6 +434,77 @@ window.walletState = {
     this.provider = null;
     this.type = null;
     localStorage.removeItem('connectedWallet');
+    this.stopConnectionMonitoring();
+  },
+  
+  // Start monitoring wallet connection
+  startConnectionMonitoring() {
+    if (this.connectionMonitor) {
+      clearInterval(this.connectionMonitor);
+    }
+    
+    this.connectionMonitor = setInterval(async () => {
+      if (window.ethereum && this.address) {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          if (accounts.length === 0 || accounts[0].toLowerCase() !== this.address.toLowerCase()) {
+            console.warn('⚠️ Wallet connection lost, clearing state');
+            this.clearWalletState();
+            // Optionally show notification
+            if (typeof showToast === 'function') {
+              showToast('Wallet connection lost. Please reconnect.', 'warning');
+            }
+          }
+        } catch (error) {
+          console.warn('Connection monitor error:', error);
+        }
+      }
+    }, 5000); // Check every 5 seconds
+  },
+  
+  // Stop monitoring wallet connection
+  stopConnectionMonitoring() {
+    if (this.connectionMonitor) {
+      clearInterval(this.connectionMonitor);
+      this.connectionMonitor = null;
+    }
+  },
+  
+  // Attempt to reconnect wallet
+  async attemptReconnection() {
+    console.log('🔄 Attempting wallet reconnection...');
+    
+    if (!window.ethereum) {
+      throw new Error('MetaMask not available');
+    }
+    
+    try {
+      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+      if (accounts.length > 0) {
+        const address = accounts[0];
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        
+        // Update wallet state
+        this.updateWalletState(address, provider, 'MetaMask');
+        
+        // Update localStorage
+        localStorage.setItem('connectedWallet', JSON.stringify({
+          address: address,
+          type: 'MetaMask',
+          timestamp: Date.now()
+        }));
+        
+        console.log('✅ Wallet reconnected:', address);
+        if (typeof showToast === 'function') {
+          showToast('Wallet reconnected successfully!', 'success');
+        }
+        
+        return { address, provider, type: 'MetaMask' };
+      }
+    } catch (error) {
+      console.error('❌ Failed to reconnect wallet:', error);
+      throw error;
+    }
   }
 };
 
@@ -643,3 +743,89 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+
+// Admin function to deploy VaultFactory once
+async function showAdminFactoryDeployment() {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-75';
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8 text-center">
+      <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+        <i class="fas fa-industry text-2xl text-blue-600"></i>
+      </div>
+      <h3 class="text-2xl font-bold text-gray-900 mb-4">Deploy VaultFactory 🏭</h3>
+      <p class="text-gray-600 mb-4">Deploy the VaultFactory contract once for all users to use.</p>
+      <p class="text-sm text-gray-500 mb-6">⚠️ Admin function - requires ~0.002 ETH for deployment</p>
+      
+      <div class="space-y-3">
+        <button onclick="deployFactoryAdmin()" id="deploy-factory-btn"
+                class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg">
+          <i class="fas fa-rocket mr-2"></i>Deploy VaultFactory
+        </button>
+        <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-6 rounded-lg">
+          Cancel
+        </button>
+      </div>
+      
+      <div class="mt-4 text-xs text-gray-500">
+        <p>💡 This deploys once and is reused for all vault creations</p>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+}
+
+// Deploy factory (admin function)
+async function deployFactoryAdmin() {
+  const btn = document.getElementById('deploy-factory-btn');
+  if (btn) {
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Deploying...';
+    btn.disabled = true;
+  }
+
+  try {
+    const result = await deployFactoryForProduction();
+    
+    showToast(`✅ VaultFactory deployed at ${result.address.slice(0,8)}...`, 'success');
+    
+    // Close modal
+    const modal = document.querySelector('.fixed.inset-0');
+    if (modal && modal.classList.contains('z-[70]')) modal.remove();
+    
+  } catch (error) {
+    showToast(`❌ Factory deployment failed: ${error.message}`, 'error');
+    console.error('Factory deployment error:', error);
+    
+    // Restore button
+    if (btn) {
+      btn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Deploy VaultFactory';
+      btn.disabled = false;
+    }
+  }
+}
+
+// Admin access via logo clicks
+let logoClickCount = 0;
+let logoClickTimeout = null;
+
+function handleLogoClick() {
+  logoClickCount++;
+  
+  // Reset counter after 3 seconds
+  if (logoClickTimeout) clearTimeout(logoClickTimeout);
+  logoClickTimeout = setTimeout(() => {
+    logoClickCount = 0;
+  }, 3000);
+  
+  // Show admin panel after 3 clicks
+  if (logoClickCount >= 3) {
+    logoClickCount = 0;
+    showAdminFactoryDeployment();
+  }
+}
+
+// Make functions globally available
+window.showAdminFactoryDeployment = showAdminFactoryDeployment;
+window.handleLogoClick = handleLogoClick;

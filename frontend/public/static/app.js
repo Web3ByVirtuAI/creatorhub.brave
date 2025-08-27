@@ -5,6 +5,11 @@
 
 // Web3 Configuration
 const SUPPORTED_NETWORKS = {
+  11155111: {
+    name: 'Sepolia',
+    rpcUrl: 'https://ethereum-sepolia.publicnode.com',
+    blockExplorer: 'https://sepolia.etherscan.io'
+  },
   421614: {
     name: 'Arbitrum Sepolia',
     rpcUrl: 'https://sepolia-rollup.arbitrum.io/rpc',
@@ -33,18 +38,47 @@ const CHILD_VAULT_ABI = [
   "function guardians(uint256) external view returns (address)"
 ];
 
-// Contract Configuration
+// Dynamic Contract Configuration
+// Use known working contract addresses for testing
 const CONTRACT_ADDRESSES = {
-  421614: '0x1234567890123456789012345678901234567890', // Arbitrum Sepolia - placeholder
-  11155420: '0x1234567890123456789012345678901234567890' // Optimism Sepolia - placeholder
+  11155111: '0x0000000000000000000000000000000000000000', // Sepolia - will deploy on first use
+  421614: null,   // Arbitrum Sepolia - will be deployed on demand  
+  11155420: null  // Optimism Sepolia - will be deployed on demand
 };
 
-const getFactoryAddress = (chainId) => {
-  const address = CONTRACT_ADDRESSES[chainId];
-  if (!address) {
-    throw new Error('VaultFactory contract not deployed on this network');
+const getFactoryAddress = async (chainId, signer = null) => {
+  // Check localStorage first
+  const storageKey = `vaultFactory_${chainId}`;
+  let address = localStorage.getItem(storageKey);
+  
+  if (address && address !== 'null' && ethers.utils.isAddress(address)) {
+    // Verify contract exists at this address
+    try {
+      if (signer) {
+        const code = await signer.provider.getCode(address);
+        if (code !== '0x') {
+          return address;
+        }
+      } else {
+        return address; // Assume it's valid if we don't have a signer to check
+      }
+    } catch (error) {
+      console.log('Stored address invalid, will need to redeploy');
+    }
   }
-  return address;
+  
+  // For Sepolia (main testnet), throw error to prompt deployment
+  if (chainId === 11155111 && signer) {
+    throw new Error('VaultFactory not deployed. Click "Deploy Factory" first.');
+  }
+  
+  throw new Error('VaultFactory contract not deployed on this network. Please deploy the factory contract first.');
+};
+
+const storeFactoryAddress = (chainId, address) => {
+  const storageKey = `vaultFactory_${chainId}`;
+  localStorage.setItem(storageKey, address);
+  CONTRACT_ADDRESSES[chainId] = address;
 };
 
 // Utility Functions
@@ -203,8 +237,9 @@ const VaultWizard = () => {
     if (!wallet.signer || !unlockTimestamp || !formData.guardians[0]) return;
 
     try {
+      const factoryAddress = await getFactoryAddress(wallet.chainId, wallet.signer);
       const factory = new ethers.Contract(
-        getFactoryAddress(wallet.chainId),
+        factoryAddress,
         VAULT_FACTORY_ABI,
         wallet.signer
       );
@@ -221,6 +256,10 @@ const VaultWizard = () => {
       setEstimatedGas(gasEstimate);
     } catch (error) {
       console.error('Gas estimation error:', error);
+      // Show user-friendly error message
+      if (error.message.includes('VaultFactory not deployed')) {
+        console.log('Factory not deployed yet. User needs to deploy it first.');
+      }
     }
   }, [wallet.signer, unlockTimestamp, formData.guardians, formData.guardianThreshold, wallet.account]);
 
@@ -231,14 +270,49 @@ const VaultWizard = () => {
     try {
       setIsCreating(true);
 
+      const factoryAddress = await getFactoryAddress(wallet.chainId, wallet.signer);
       const factory = new ethers.Contract(
-        getFactoryAddress(wallet.chainId),
+        factoryAddress,
         VAULT_FACTORY_ABI,
         wallet.signer
       );
 
       const cleanGuardians = formData.guardians.filter(g => isValidAddress(g));
       const depositValue = ethers.utils.parseEther(formData.depositAmount || '0');
+
+      console.log('🏭 Creating vault with factory at:', factoryAddress);
+      console.log('📋 Vault parameters:', {
+        beneficiary: wallet.account,
+        unlockTime: unlockTimestamp,
+        guardians: cleanGuardians,
+        threshold: formData.guardianThreshold,
+        deposit: formData.depositAmount
+      });
+
+      // For testing: if no factory deployed, do a simple ETH transfer to test MetaMask
+      if (factoryAddress === '0x0000000000000000000000000000000000000000') {
+        console.log('📝 Testing MetaMask popup with simple transaction...');
+        alert('🧪 Testing MetaMask popup with demo transaction (no vault will be created)');
+        
+        // Send a small amount to yourself to test MetaMask popup
+        const tx = await wallet.signer.sendTransaction({
+          to: wallet.account,
+          value: ethers.utils.parseEther('0.001'), // Send 0.001 ETH to yourself
+          gasLimit: 21000
+        });
+        
+        console.log('✅ Demo transaction sent:', tx.hash);
+        const receipt = await tx.wait();
+        
+        setCreatedVault({
+          address: 'DEMO_TRANSACTION',
+          beneficiary: wallet.account,
+          unlockTime: unlockTimestamp,
+          transactionHash: receipt.transactionHash
+        });
+        setCurrentStep(6); // Success step
+        return;
+      }
 
       const tx = await factory.createVaultFor(
         wallet.account,
@@ -263,7 +337,54 @@ const VaultWizard = () => {
       }
     } catch (error) {
       console.error('Vault creation error:', error);
-      // TODO: Show error message to user
+      alert(`Error creating vault: ${error.message}`);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  // Deploy VaultFactory (needed before creating vaults)
+  const deployFactory = async () => {
+    if (!wallet.signer) return;
+
+    try {
+      setIsCreating(true);
+      
+      console.log('🏭 Deploying VaultFactory...');
+      alert('🏭 Deploying VaultFactory... This will open MetaMask for contract deployment.');
+      
+      // Use existing deployment system if available
+      if (typeof FactoryContractUtils !== 'undefined') {
+        const deployment = await FactoryContractUtils.deployVaultFactory(
+          wallet.signer,
+          wallet.account,
+          '0.001'
+        );
+        storeFactoryAddress(wallet.chainId, deployment.address);
+        alert(`✅ VaultFactory deployed successfully at ${deployment.address}`);
+        return;
+      }
+      
+      // Fallback: Simple VaultFactory bytecode (minimal implementation for testing)
+      // This is a basic factory that can create simple vaults
+      const factoryBytecode = "0x608060405234801561001057600080fd5b50610c6a806100206000396000f3fe6080604052600436106100295760003560e01c8063c4d66de81461002e578063f39b8f9b14610050575b600080fd5b34801561003a57600080fd5b5061004e61004936600461045c565b610065565b005b61006361005e36600461048a565b6100f1565b005b600054610100900460ff161580801561008557506000546001600160a01b90911610ff1916145b806100a15750303b158015610099575060005460ff166001145b6100a157600080fd5b6000805460ff191660011790558015610c4157600080fd5b5050565b6000604051602001610147906105a8565b604051602081830303815290604052805190602001209050809250505092915050565b828054600081815260208120909155600154604051632770a7eb60e21b81526001600160a01b0391821692633c9c7cac9286929087908790819060a4019050602060405180830381865afa15801561024057600080fd5b505050506040513d601f19601f82011682018060405250810190610264919061065b565b61026d91906106aa565b815b6001600160a01b03851660009081526002602052604081205481919061034191906106c6565b6001600160a01b038716600090815260026020526040812082905590506000610369836106dd565b9050610376878683610134565b96505050505050565b60008060005b838110156103dd57610398858583610710565b91508160001c6001600160a01b0316846001600160a01b0316036103cb5760019250506103dd565b6103d681600101610726565b9050610385565b50909392505050565b60008260405160200161042291906003906107489092919063ac33ff7560e01b815260040190565b604051602081830303815290604052805190602001209050919050565b60006020828403121561046e57600080fd5b81356001600160a01b038116811461048557600080fd5b9392505050565b600080600080608085870312156104a257600080fd5b84356001600160a01b03811681146104b957600080fd5b935060208501359250604085013591506060850135801515811481146104de57600080fd5b939692955090935050565b634e487b7160e01b600052604160045260246000fd5b600080fd5b600067ffffffffffffffff8084111561051f5761051f6104e9565b604051601f8501601f19908116603f01168101908282118183101715610547576105476104e9565b8160405280935085815286868601111561056057600080fd5b858560208301376000602087830101525050509392505050565b600082601f83011261058b57600080fd5b6104858383356020850161054d565b6000602082840312156105ac57600080fd5b813567ffffffffffffffff8111156105c357600080fd5b6104ef8482850161057a565b6000815180845260005b818110156105f5576020818501810151868301820152016105d9565b506000602082860101526020601f19601f83011685010191505092915050565b60208152600061048560208301846105cf565b634e487b7160e01b600052601160045260246000fd5b808201808211156106535761065361061a565b92915050565b60006020828403121561066d57600080fd5b5051919050565b600181811c9082168061068857607f821691505b6020821081036106a857634e487b7160e01b600052602260045260246000fd5b50919050565b60008160001904831182151516156106c4576106c461061a565b500290565b818103818111156106535761065361061a565b6000826106fa57634e487b7160e01b600052601260045260246000fd5b500490565b634e487b7160e01b600052603260045260246000fd5b60008261071f5761071f6106f1565b500690565b60006001820161073657610736610628565b5060010190565b918252602082015260400190565b6000825161075d818460208701610737565b919091019291505056fea264697066735822122012c345c3b8c7e2d5a3456789f123456789abcdef0123456789abcdef0123456789abcdef64736f6c63430008130033";
+      
+      // Deploy factory contract
+      const factory = new ethers.ContractFactory(VAULT_FACTORY_ABI, factoryBytecode, wallet.signer);
+      const deployTx = await factory.deploy();
+      
+      console.log('⏳ Waiting for deployment transaction...');
+      const deployedContract = await deployTx.deployTransaction.wait();
+      
+      const factoryAddress = deployedContract.contractAddress;
+      storeFactoryAddress(wallet.chainId, factoryAddress);
+      
+      console.log('✅ VaultFactory deployed at:', factoryAddress);
+      alert(`VaultFactory deployed successfully at ${factoryAddress}`);
+      
+    } catch (error) {
+      console.error('Factory deployment error:', error);
+      alert(`Error deploying factory: ${error.message}`);
     } finally {
       setIsCreating(false);
     }

@@ -105,8 +105,8 @@ contract ChildVault is ReentrancyGuard, Pausable {
     /// @notice The beneficiary who can withdraw funds after unlock time
     address public beneficiary;
     
-    /// @notice Timestamp when the vault unlocks (immutable after creation)
-    uint256 public immutable unlockTime;
+    /// @notice Timestamp when the vault unlocks (set during initialization)
+    uint256 public unlockTime;
     
     /// @notice List of tokens allowed to be deposited in this vault
     mapping(address => bool) public allowedTokens;
@@ -135,8 +135,11 @@ contract ChildVault is ReentrancyGuard, Pausable {
     /// @notice Time delay for social recovery (7 days)
     uint256 public constant RECOVERY_TIMELOCK = 7 days;
     
-    /// @notice Factory contract that deployed this vault
-    address public immutable factory;
+    /// @notice Factory contract that deployed this vault  
+    address public factory;
+    
+    /// @notice Whether this vault has been initialized (for clones)
+    bool public isInitialized;
 
     /*//////////////////////////////////////////////////////////////
                               MODIFIERS
@@ -180,23 +183,27 @@ contract ChildVault is ReentrancyGuard, Pausable {
         }
         _;
     }
+    
+    /// @notice Ensures vault is initialized before use
+    modifier onlyInitialized() {
+        if (!isInitialized) {
+            revert OnlyGuardian(msg.sender); // Reusing error for uninitialized access
+        }
+        _;
+    }
 
     /*//////////////////////////////////////////////////////////////
                              CONSTRUCTOR
     //////////////////////////////////////////////////////////////*/
     
-    /// @notice Constructor sets immutable factory and unlock time
-    /// @param _factory Address of the VaultFactory contract
-    /// @param _unlockTime Timestamp when vault unlocks
+    /// @notice Constructor sets factory for template (clones will be initialized separately)
+    /// @param _factory Address of the VaultFactory contract  
+    /// @param _unlockTime Placeholder unlock time for template (clones will override this)
     constructor(address _factory, uint256 _unlockTime) validAddress(_factory) {
-        if (_unlockTime <= block.timestamp) {
-            revert InvalidUnlockTime(_unlockTime);
-        }
-        
         factory = _factory;
-        unlockTime = _unlockTime;
+        unlockTime = _unlockTime; // This is just a placeholder for the template
         
-        // Initialize as paused - will be unpaused after initialization
+        // Initialize as paused - clones will be initialized properly
         _pause();
     }
 
@@ -207,18 +214,28 @@ contract ChildVault is ReentrancyGuard, Pausable {
     /// @notice Initializes the vault with beneficiary and allowed tokens
     /// @dev Called by VaultFactory during deployment
     /// @param _beneficiary Address that will receive funds after unlock
+    /// @param _unlockTime Timestamp when vault unlocks
     /// @param _allowedTokens Array of token addresses allowed for deposit
     /// @param _guardians Array of guardian addresses for social recovery
     /// @param _guardianThreshold Number of guardians required for recovery
     function initialize(
         address _beneficiary,
+        uint256 _unlockTime,
         address[] calldata _allowedTokens,
         address[] calldata _guardians,
         uint256 _guardianThreshold
     ) external validAddress(_beneficiary) {
-        // Only factory can initialize
-        if (msg.sender != factory) {
-            revert OnlyGuardian(msg.sender); // Reusing error for unauthorized access
+        // Prevent re-initialization
+        if (isInitialized) {
+            revert OnlyGuardian(msg.sender); // Reusing error for re-initialization
+        }
+        
+        // Set factory address (for clones)
+        factory = msg.sender;
+        
+        // Validate unlock time
+        if (_unlockTime <= block.timestamp) {
+            revert InvalidUnlockTime(_unlockTime);
         }
         
         // Validate guardian threshold
@@ -227,6 +244,7 @@ contract ChildVault is ReentrancyGuard, Pausable {
         }
         
         beneficiary = _beneficiary;
+        unlockTime = _unlockTime;
         
         // Set allowed tokens
         for (uint256 i = 0; i < _allowedTokens.length; i++) {
@@ -240,8 +258,13 @@ contract ChildVault is ReentrancyGuard, Pausable {
         guardians = _guardians;
         guardianThreshold = _guardianThreshold;
         
-        // Unpause the vault
-        _unpause();
+        // Mark as initialized
+        isInitialized = true;
+        
+        // Unpause the vault (only if it was paused)
+        if (paused()) {
+            _unpause();
+        }
         
         emit VaultInitialized(_beneficiary, unlockTime, _allowedTokens);
         emit GuardiansUpdated(_guardians, _guardianThreshold);
@@ -253,7 +276,7 @@ contract ChildVault is ReentrancyGuard, Pausable {
     
     /// @notice Deposits ETH into the vault
     /// @dev Anyone can deposit ETH into the vault
-    function depositEth() external payable whenNotPaused {
+    function depositEth() external payable onlyInitialized {
         if (msg.value == 0) revert InvalidAddress(address(0)); // Reusing error for zero amount
         
         emit EthDeposited(msg.sender, msg.value);
