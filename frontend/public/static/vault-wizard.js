@@ -36,18 +36,29 @@ function openDashboardAndClose(button) {
 // Show the vault creation wizard
 function showVaultWizard(connectedWallet = null) {
   console.log('🚀 Opening Vault Creation Wizard');
+  console.log('🔍 Received wallet info:', connectedWallet);
   
   wizardState.isVisible = true;
   
   // Check if wallet is already connected
   if (connectedWallet && connectedWallet.address) {
-    console.log('✅ Using already connected wallet:', connectedWallet.address);
+    console.log('✅ Using passed wallet connection:', connectedWallet.address);
     wizardState.connectedWallet = connectedWallet;
     wizardState.currentStep = 2; // Skip wallet connection step
   } else {
-    console.log('⚠️ No wallet connected, starting from wallet connection');
-    wizardState.connectedWallet = null;
-    wizardState.currentStep = 1;
+    // Try to get wallet info from global state as fallback
+    const fallbackWallet = window.walletState?.getWalletInfo();
+    console.log('🔍 Checking fallback wallet:', fallbackWallet);
+    
+    if (fallbackWallet && fallbackWallet.address) {
+      console.log('✅ Using fallback wallet connection:', fallbackWallet.address);
+      wizardState.connectedWallet = fallbackWallet;
+      wizardState.currentStep = 2; // Skip wallet connection step
+    } else {
+      console.log('⚠️ No wallet connected, starting from wallet connection');
+      wizardState.connectedWallet = null;
+      wizardState.currentStep = 1;
+    }
   }
   
   // Create wizard modal
@@ -744,8 +755,20 @@ function updateReviewData() {
 
 // Deploy vault smart contract
 async function deployVaultContract() {
+  console.log('🔍 Checking wallet connection...', wizardState.connectedWallet);
+  
   if (!wizardState.connectedWallet || !wizardState.connectedWallet.address) {
-    throw new Error('No wallet connected');
+    // Try to get wallet info from global state as fallback
+    const walletInfo = window.walletState?.getWalletInfo();
+    console.log('🔍 Fallback wallet info:', walletInfo);
+    
+    if (walletInfo && walletInfo.address) {
+      wizardState.connectedWallet = walletInfo;
+      console.log('✅ Using fallback wallet connection:', walletInfo.address);
+    } else {
+      console.error('❌ No wallet connection found');
+      throw new Error('No wallet connected. Please connect your wallet first.');
+    }
   }
 
   // Check if we have ethers.js available
@@ -844,15 +867,18 @@ async function deployVaultContract() {
   showToast('✅ Network verified: Sepolia testnet', 'success');
 
   try {
-    showToast('🚀 Creating vault using VaultFactory on Sepolia testnet...', 'info');
+    showToast('🚀 Creating vault using existing VaultFactory on Sepolia testnet...', 'info');
     
-    // Check if we have a deployed VaultFactory, if not deploy one
-    let factoryAddress = window.DEPLOYED_CONTRACTS?.sepolia?.VaultFactory;
+    // Get existing factory address (should be pre-deployed)
+    let factoryAddress;
     
-    if (!factoryAddress) {
-      showToast('🏭 No VaultFactory found. Deploying factory contract...', 'info');
+    try {
+      factoryAddress = await NetworkUtils.getOrDeployFactory();
+      showToast(`📍 Using VaultFactory: ${factoryAddress.slice(0,8)}...`, 'info');
+    } catch (error) {
+      // If no factory exists, we need to deploy one first (should be rare)
+      showToast('🏭 No VaultFactory found. Deploying new factory...', 'info');
       
-      // Use the factory loader utilities
       if (typeof FactoryContractUtils === 'undefined') {
         throw new Error('Factory utilities not loaded. Please refresh the page.');
       }
@@ -865,12 +891,10 @@ async function deployVaultContract() {
       
       factoryAddress = deployment.address;
       
-      // Store for future use
-      if (!window.DEPLOYED_CONTRACTS) window.DEPLOYED_CONTRACTS = { sepolia: {} };
-      if (!window.DEPLOYED_CONTRACTS.sepolia) window.DEPLOYED_CONTRACTS.sepolia = {};
-      window.DEPLOYED_CONTRACTS.sepolia.VaultFactory = factoryAddress;
+      // Store permanently for future use
+      NetworkUtils.storeFactoryAddress('sepolia', factoryAddress);
       
-      showToast(`✅ VaultFactory deployed at: ${factoryAddress}`, 'success');
+      showToast(`✅ New VaultFactory deployed at: ${factoryAddress.slice(0,8)}...`, 'success');
     }
     
     // Calculate unlock timestamp
@@ -878,12 +902,22 @@ async function deployVaultContract() {
     const unlockTimestamp = Math.floor(unlockDate.getTime() / 1000);
     
     // Prepare vault configuration
+    const filteredGuardians = wizardState.formData.guardians.filter(g => g.trim());
+    
+    // For now, use user's address as default guardian to satisfy contract validation
+    // This allows vault creation to work while we have proper guardian setup in UI
+    const defaultGuardians = filteredGuardians.length > 0 ? filteredGuardians : [signerAddress];
+    const defaultThreshold = filteredGuardians.length > 0 ? (wizardState.formData.guardianThreshold || 1) : 1;
+    
     const vaultConfig = {
       unlockTime: unlockTimestamp,
       allowedTokens: [], // Empty array allows all tokens
-      guardians: wizardState.formData.guardians.filter(g => g.trim()),
-      guardianThreshold: wizardState.formData.guardianThreshold || 0
+      guardians: defaultGuardians,
+      guardianThreshold: defaultThreshold
     };
+    
+    console.log('Vault configuration:', vaultConfig);
+    showToast(`Using ${defaultGuardians.length} guardian(s) with threshold ${defaultThreshold}`, 'info');
     
     showToast('📝 Please sign the vault creation transaction in MetaMask...', 'info');
     
@@ -973,7 +1007,17 @@ async function createVault() {
       btn.classList.remove('opacity-75');
     }
     
-    showToast('❌ Failed to create vault: ' + error.message, 'error');
+    // Provide more helpful error messages
+    let errorMessage = error.message;
+    if (error.message.includes('No wallet connected')) {
+      errorMessage = 'Wallet connection lost. Please reconnect your wallet and try again.';
+    } else if (error.message.includes('user rejected')) {
+      errorMessage = 'Transaction rejected. Please approve the transaction in MetaMask.';
+    } else if (error.message.includes('insufficient funds')) {
+      errorMessage = 'Insufficient ETH balance. You need at least 0.002 ETH for vault creation.';
+    }
+    
+    showToast('❌ Failed to create vault: ' + errorMessage, 'error');
     console.error('Vault creation failed:', error);
   }
 }

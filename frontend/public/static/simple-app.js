@@ -643,3 +643,89 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 });
+
+// Admin function to deploy VaultFactory once
+async function showAdminFactoryDeployment() {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 z-[70] flex items-center justify-center bg-black bg-opacity-75';
+  modal.innerHTML = `
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8 text-center">
+      <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+        <i class="fas fa-industry text-2xl text-blue-600"></i>
+      </div>
+      <h3 class="text-2xl font-bold text-gray-900 mb-4">Deploy VaultFactory 🏭</h3>
+      <p class="text-gray-600 mb-4">Deploy the VaultFactory contract once for all users to use.</p>
+      <p class="text-sm text-gray-500 mb-6">⚠️ Admin function - requires ~0.002 ETH for deployment</p>
+      
+      <div class="space-y-3">
+        <button onclick="deployFactoryAdmin()" id="deploy-factory-btn"
+                class="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg">
+          <i class="fas fa-rocket mr-2"></i>Deploy VaultFactory
+        </button>
+        <button onclick="this.parentElement.parentElement.parentElement.remove()" 
+                class="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-6 rounded-lg">
+          Cancel
+        </button>
+      </div>
+      
+      <div class="mt-4 text-xs text-gray-500">
+        <p>💡 This deploys once and is reused for all vault creations</p>
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(modal);
+}
+
+// Deploy factory (admin function)
+async function deployFactoryAdmin() {
+  const btn = document.getElementById('deploy-factory-btn');
+  if (btn) {
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Deploying...';
+    btn.disabled = true;
+  }
+
+  try {
+    const result = await deployFactoryForProduction();
+    
+    showToast(`✅ VaultFactory deployed at ${result.address.slice(0,8)}...`, 'success');
+    
+    // Close modal
+    const modal = document.querySelector('.fixed.inset-0');
+    if (modal && modal.classList.contains('z-[70]')) modal.remove();
+    
+  } catch (error) {
+    showToast(`❌ Factory deployment failed: ${error.message}`, 'error');
+    console.error('Factory deployment error:', error);
+    
+    // Restore button
+    if (btn) {
+      btn.innerHTML = '<i class="fas fa-rocket mr-2"></i>Deploy VaultFactory';
+      btn.disabled = false;
+    }
+  }
+}
+
+// Admin access via logo clicks
+let logoClickCount = 0;
+let logoClickTimeout = null;
+
+function handleLogoClick() {
+  logoClickCount++;
+  
+  // Reset counter after 3 seconds
+  if (logoClickTimeout) clearTimeout(logoClickTimeout);
+  logoClickTimeout = setTimeout(() => {
+    logoClickCount = 0;
+  }, 3000);
+  
+  // Show admin panel after 3 clicks
+  if (logoClickCount >= 3) {
+    logoClickCount = 0;
+    showAdminFactoryDeployment();
+  }
+}
+
+// Make functions globally available
+window.showAdminFactoryDeployment = showAdminFactoryDeployment;
+window.handleLogoClick = handleLogoClick;

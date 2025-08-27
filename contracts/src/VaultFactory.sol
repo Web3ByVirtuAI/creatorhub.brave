@@ -240,7 +240,7 @@ contract VaultFactory is Ownable, ReentrancyGuard, Pausable {
         }
         
         // Initialize the vault
-        try ChildVault(payable(vault)).initialize(beneficiary, allowedTokens, guardians, guardianThreshold) {
+        try ChildVault(payable(vault)).initialize(beneficiary, unlockTime, allowedTokens, guardians, guardianThreshold) {
             // Registration successful
         } catch {
             revert VaultDeploymentFailed();

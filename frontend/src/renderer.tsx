@@ -65,6 +65,7 @@ export const renderer = jsxRenderer(({ children }) => {
         <script src="/static/walletConnect.js"></script>
         <script src="/static/contracts.js"></script>
         <script src="/static/factory-loader.js"></script>
+        <script src="/static/deploy-factory.js"></script>
         <script src="/static/notifications.js"></script>
         <script src="/static/dashboard.js"></script>
         <script src="/static/vault-wizard.js"></script>

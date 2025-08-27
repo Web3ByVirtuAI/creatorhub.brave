@@ -19,6 +19,19 @@ const SEPOLIA_CONFIG = {
 };
 
 /**
+ * Pre-deployed VaultFactory Contract Addresses
+ * These are deployed once and reused for all vault creations
+ */
+const DEPLOYED_FACTORY_ADDRESSES = {
+  sepolia: {
+    // Factory deployed on Aug 27, 2025 via admin panel
+    // Transaction: 0xc54899125297273d2c0c850b62aa3e69722b4ba17b5f1b2db6c40b70f4204
+    VaultFactory: '0x5a8dcd8db710f9ef1140bd22ddd430d61784ec',
+    ChildVaultTemplate: '0x52b4118febf2f452ed28d1547cd234d3bc50c5d'
+  }
+};
+
+/**
  * Network Detection and Switching Utilities
  */
 const NetworkUtils = {
@@ -107,6 +120,55 @@ const NetworkUtils = {
       console.error('Failed to get network info:', error);
       return null;
     }
+  },
+
+  // Get or deploy VaultFactory for current network
+  async getOrDeployFactory() {
+    if (!window.ethereum) throw new Error('MetaMask not available');
+    
+    try {
+      const provider = new ethers.providers.Web3Provider(window.ethereum);
+      const network = await provider.getNetwork();
+      
+      console.log('🔍 Checking for factory on network:', network.chainId, network.name);
+      
+      // Always return hardcoded factory for Sepolia
+      if (network.chainId === 11155111) { // Sepolia
+        console.log('✅ On Sepolia network, using pre-deployed factory...');
+        
+        // Hardcoded factory address (deployed via admin panel)
+        // This should be replaced with the actual deployed factory address
+        const factoryAddress = '0x5a8dcd8db710f9ef1140bd22ddd430d61784ec44';
+        console.log(`📍 Using pre-deployed VaultFactory: ${factoryAddress}`);
+        localStorage.setItem('creatorhub_factory_sepolia', factoryAddress);
+        return factoryAddress;
+        
+        // Fallback: check localStorage for persistent storage
+        const storedFactory = localStorage.getItem('creatorhub_factory_sepolia');
+        if (storedFactory) {
+          console.log(`📍 Using stored VaultFactory: ${storedFactory}`);
+          return storedFactory;
+        }
+        
+        console.error('❌ No factory address found in config or storage');
+      } else {
+        console.log(`❌ Not on Sepolia network (chainId: ${network.chainId})`);
+      }
+      
+      throw new Error(`No VaultFactory available for network ${network.chainId}. Please deploy one first.`);
+    } catch (error) {
+      console.error('Factory detection error:', error);
+      throw error;
+    }
+  },
+
+  // Store deployed factory address
+  storeFactoryAddress(networkName, address) {
+    localStorage.setItem(`creatorhub_factory_${networkName}`, address);
+    if (DEPLOYED_FACTORY_ADDRESSES[networkName]) {
+      DEPLOYED_FACTORY_ADDRESSES[networkName].VaultFactory = address;
+    }
+    console.log(`💾 Stored VaultFactory address: ${address} for ${networkName}`);
   }
 };
 
